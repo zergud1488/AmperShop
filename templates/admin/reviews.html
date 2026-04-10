@@ -1,0 +1,40 @@
+{% extends 'admin/base.html' %}
+{% block title %}Відгуки — Адмінка AmperShop{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+  <div>
+    <h1 class="fw-bold mb-1">Відгуки про товари</h1>
+    <div class="text-secondary">Керуйте публікацією, приховуйте або видаляйте відгуки.</div>
+  </div>
+</div>
+<div class="card border-0 shadow-sm rounded-4">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>Товар</th><th>Клієнт</th><th>Оцінка</th><th>Текст</th><th>Статус</th><th>Дія</th></tr></thead>
+      <tbody>
+      {% for review in reviews %}
+        <tr>
+          <td>{{ review.product.title }}</td>
+          <td>{{ review.author_name }}<div class="small text-secondary">{{ review.email or '—' }}</div></td>
+          <td>{{ review.rating }}/5</td>
+          <td style="max-width: 320px;">{{ review.comment }}</td>
+          <td>{% if review.is_approved %}<span class="badge text-bg-success">Опубліковано</span>{% else %}<span class="badge text-bg-secondary">Приховано</span>{% endif %}</td>
+          <td>
+            <div class="d-flex gap-2">
+              <form method="post" action="{{ url_for('admin_review_toggle', review_id=review.id) }}">
+                <button class="btn btn-sm btn-outline-dark">{% if review.is_approved %}Сховати{% else %}Показати{% endif %}</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_review_delete', review_id=review.id) }}" onsubmit="return confirm('Видалити відгук?');">
+                <button class="btn btn-sm btn-outline-danger">Видалити</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-center text-secondary py-4">Відгуків ще немає.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

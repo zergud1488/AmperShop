@@ -1,0 +1,44 @@
+<div class="col-md-6 col-lg-3">
+  <div class="product-card ultra-product-card final-product-card h-100 d-flex flex-column">
+    <a href="{{ url_for('product_detail', slug=product.slug) }}" class="text-decoration-none text-dark">
+      <div class="product-image-wrap">
+        {% if product.images %}
+          <img src="/{{ product.images[0].image_path }}" alt="{{ product.title }}" class="product-image">
+        {% else %}
+          <div class="product-placeholder">AmperShop</div>
+        {% endif %}
+        <div class="product-floating-meta">
+          <div class="d-flex gap-2 flex-wrap">
+            {% if product.discount_enabled and product.old_price %}<span class="badge badge-sale">SALE</span>{% endif %}
+            {% if product.is_top %}<span class="badge text-bg-dark rounded-pill">TOP</span>{% endif %}
+          </div>
+          <span class="glass-chip">AmperChoice</span>
+        </div>
+      </div>
+      <div class="p-3 p-lg-4">
+        <div class="product-meta-line">
+          <div class="text-secondary small">{{ product.category.name }}</div>
+          <div class="mini-dot"></div>
+          <div class="text-secondary small">Преміальна вітрина</div>
+        </div>
+        <h5 class="product-title">{{ product.title }}</h5>
+        <p class="text-secondary small mb-3">{{ product.short_description or 'Детальний опис, характеристики та умови замовлення доступні на сторінці товару.' }}</p>
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+          <span class="price">{{ '%.0f'|format(product.current_price) }} грн</span>
+          {% if product.discount_enabled and product.old_price %}<span class="old-price">{{ '%.0f'|format(product.old_price) }} грн</span>{% endif %}
+        </div>
+        <div class="product-trust-line">Швидке оформлення • Актуальна наявність • Зручна доставка</div>
+      </div>
+    </a>
+    <div class="px-3 px-lg-4 pb-4 mt-auto d-grid gap-2">
+      <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+        <button class="btn btn-electric w-100">Додати у кошик</button>
+      </form>
+      {% if current_user.is_authenticated and not current_user.is_admin %}
+      <form method="post" action="{{ url_for('wishlist_add', product_id=product.id) }}">
+        <button class="btn btn-outline-dark rounded-pill w-100">Додати в обране</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>

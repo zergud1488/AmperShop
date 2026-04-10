@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}AmperShop — преміальний онлайн-магазин{% endblock %}
+{% block content %}
+{% set strip_cards = [
+  {'order': cms_int('home_strip_1_order', 1), 'eyebrow': cms('home_strip_1_eyebrow', 'Преміальна подача'), 'title': cms('home_strip_1_title', 'Стильна головна сторінка, що продає з першого екрану'), 'text': cms('home_strip_1_text', 'Баланс повітря, типографіки та акцентів створює відчуття дорогого й надійного магазину.')},
+  {'order': cms_int('home_strip_2_order', 2), 'eyebrow': cms('home_strip_2_eyebrow', 'Продуманий UX'), 'title': cms('home_strip_2_title', 'Покупець швидко знаходить потрібне й легко оформлює замовлення'), 'text': cms('home_strip_2_text', 'Фільтри, обране, акційні позначки та чисті сторінки товарів працюють на конверсію.')},
+  {'order': cms_int('home_strip_3_order', 3), 'eyebrow': cms('home_strip_3_eyebrow', 'Рівень бренду'), 'title': cms('home_strip_3_title', 'Інтерфейс, який виглядає як готовий професійний e-commerce'), 'text': cms('home_strip_3_text', 'Кожен блок сайту підсилює довіру та допомагає перетворювати трафік на замовлення.')}
+] %}
+<section class="hero-section ultra-hero-section final-hero-section">
+  <div class="container">
+    <div class="hero-card pulse-border premium-hero ultra-hero final-hero compact-hero">
+      <div class="hero-orb"></div>
+      <div class="hero-orb hero-orb-secondary"></div>
+      <div class="row align-items-center g-4">
+        <div class="col-lg-7">
+          <div class="eyebrow">{{ cms('home_hero_eyebrow', 'AmperShop Signature Store') }}</div>
+          <div class="hero-badge-row">
+            <span class="hero-badge">{{ cms('home_hero_badge_1', 'Преміальна вітрина') }}</span>
+            <span class="hero-badge">{{ cms('home_hero_badge_2', 'Швидка доставка по Україні') }}</span>
+            <span class="hero-badge">{{ cms('home_hero_badge_3', 'Вигідні пропозиції щодня') }}</span>
+          </div>
+          <h1 class="display-4 fw-bold mb-3">{{ cms('home_hero_title', 'Товари для дому, техніки й щоденного комфорту — з професійною подачею, швидким вибором і зручним оформленням.') }}</h1>
+          <p class="fs-5">{{ cms('home_hero_subtitle', 'AmperShop поєднує чистий преміальний дизайн, продуману навігацію та сучасний вибір товарів для дому, техніки, аксесуарів і щоденного комфорту.') }}</p>
+          <div class="d-flex flex-wrap gap-3 mt-4">
+            <a class="btn btn-electric btn-lg" href="{{ cms('home_primary_button_url', '/catalog') }}">{{ cms('home_primary_button_text', 'Відкрити каталог') }}</a>
+            <a class="btn btn-outline-dark rounded-pill btn-lg" href="{{ cms('home_secondary_button_url', '/#featured-products') }}">{{ cms('home_secondary_button_text', 'Переглянути хіти продажу') }}</a>
+          </div>
+          <div class="hero-metrics hero-metrics-ultra">
+            <div><strong>{{ cms('home_metric_1_value', '') or fresh_products|length }}</strong><span>{{ cms('home_metric_1_label', 'актуальних позицій') }}</span></div>
+            <div><strong>{{ cms('home_metric_2_value', '') or categories|length }}</strong><span>{{ cms('home_metric_2_label', 'категорій') }}</span></div>
+            <div><strong>{{ cms('home_metric_3_value', '24/7') }}</strong><span>{{ cms('home_metric_3_label', 'онлайн-замовлення') }}</span></div>
+          </div>
+        </div>
+        <div class="col-lg-5">
+          <div class="hero-side-card p-4 h-100 ultra-side-card final-side-card">
+            <div class="mini-kicker mb-2">{{ cms('home_side_kicker', 'Сервіс, що працює на продаж') }}</div>
+            <ul class="feature-list mb-0">
+              {% for line in cms_lines('home_side_features', 'Велика преміальна вітрина з чіткою логікою каталогу\nПомітні ТОП товари, знижки та вигідні добірки\nШвидкий пошук, фільтри й комфортний шлях до покупки\nЗручне оформлення замовлення з популярними службами доставки\nСтабільна мобільна версія для покупок з будь-якого пристрою\nКабінет покупця з історією замовлень та обраним') %}
+              <li>{{ line }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ultra-strip-grid final-strip-grid">
+      {% for card in strip_cards|sort(attribute='order') %}
+      <div class="ultra-strip-card final-strip-card">
+        <div class="eyebrow mb-2">{{ card.eyebrow }}</div>
+        <h3>{{ card.title }}</h3>
+        <p>{{ card.text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="py-5 categories-section">
+  <div class="container">
+    <div class="section-head mb-4 d-flex justify-content-between align-items-end flex-wrap gap-3">
+      <div>
+        <div class="eyebrow">Навігація по каталогу</div>
+        <h2 class="fw-bold mb-0">Популярні категорії</h2>
+      </div>
+      <a href="{{ url_for('catalog') }}" class="btn btn-outline-dark rounded-pill">Перейти до всіх товарів</a>
+    </div>
+    <div class="row g-4">
+      {% for category in categories %}
+      <div class="col-md-6 col-lg-4">
+        <a href="{{ url_for('catalog', category=category.slug) }}" class="category-card text-decoration-none ultra-category-card final-category-card">
+          <div>
+            <div class="fw-bold fs-4 mb-2">{{ category.name }}</div>
+            <div class="text-secondary">{{ category.description or 'Добірка товарів із сучасною подачею та комфортним вибором.' }}</div>
+          </div>
+          <div class="fs-2">→</div>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="py-5 bg-soft" id="featured-products">
+  <div class="container">
+    <div class="section-head mb-4 d-flex justify-content-between align-items-end flex-wrap gap-3">
+      <div>
+        <div class="eyebrow">Вітрина AmperShop</div>
+        <h2 class="fw-bold mb-0">ТОП товари</h2>
+      </div>
+      <div class="section-copy">Позиції, які найкраще демонструють стиль магазину, якість подачі та вигідні пропозиції.</div>
+    </div>
+    <div class="row g-4">
+      {% for product in top_products %}
+        {% include 'partials/product_card.html' %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="py-5 fresh-section">
+  <div class="container">
+    <div class="section-head mb-4 d-flex justify-content-between align-items-end flex-wrap gap-3">
+      <div>
+        <div class="eyebrow">Нові надходження</div>
+        <h2 class="fw-bold mb-0">Свіжі товари у вітрині</h2>
+      </div>
+      <div class="section-copy">Актуальні позиції, які вже доступні для швидкого замовлення.</div>
+    </div>
+    <div class="row g-4">
+      {% for product in fresh_products %}
+        {% include 'partials/product_card.html' %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="py-5 bg-soft trust-section">
+  <div class="container">
+    <div class="info-banner final-info-banner">
+      <div>
+        <div class="eyebrow">{{ cms('home_trust_eyebrow', 'AmperShop Experience') }}</div>
+        <h2 class="fw-bold mb-2">{{ cms('home_trust_title', 'Онлайн-магазин, де кожна деталь працює на довіру та продаж') }}</h2>
+        <p class="text-secondary mb-0">{{ cms('home_trust_text', 'Чистий інтерфейс, сильна візуальна подача, зрозумілі ціни, акції та сучасний процес оформлення формують відчуття професійного магазину преміального рівня.') }}</p>
+      </div>
+      <a class="btn btn-electric" href="{{ cms('home_trust_button_url', '/catalog') }}">{{ cms('home_trust_button_text', 'Почати покупки') }}</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

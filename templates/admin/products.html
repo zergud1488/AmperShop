@@ -1,0 +1,32 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div><div class="eyebrow">Товари</div><h1 class="fw-bold mb-0">Управління товарами</h1></div>
+  <a href="{{ url_for('admin_product_new') }}" class="btn btn-electric">+ Додати товар</a>
+</div>
+<div class="card border-0 shadow-sm rounded-4">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>ID</th><th>Товар</th><th>Категорія</th><th>Ціна</th><th>Знижка</th><th>ТОП</th><th></th></tr></thead>
+      <tbody>
+      {% for product in products %}
+        <tr>
+          <td>{{ product.id }}</td>
+          <td>{{ product.title }}</td>
+          <td>{{ product.category.name }}</td>
+          <td>{{ '%.0f'|format(product.price) }} грн</td>
+          <td>{{ 'Так' if product.discount_enabled else 'Ні' }}</td>
+          <td>{{ 'Так' if product.is_top else 'Ні' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('admin_product_edit', product_id=product.id) }}" class="btn btn-sm btn-outline-dark">Редагувати</a>
+            <form method="post" action="{{ url_for('admin_product_delete', product_id=product.id) }}" class="d-inline" onsubmit="return confirm('Видалити товар?')">
+              <button class="btn btn-sm btn-outline-danger">Видалити</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

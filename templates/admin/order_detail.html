@@ -1,0 +1,52 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">Замовлення #{{ order.id }}</div><h1 class="fw-bold mb-0">Деталі замовлення</h1></div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Товари</h4>
+        {% for item in order.items %}
+        <div class="py-3 border-bottom">
+          <strong>{{ item.title }}</strong>
+          <div class="text-secondary small">{{ item.description }}</div>
+          <div class="mt-2">{{ item.quantity }} × {{ '%.0f'|format(item.price) }} грн</div>
+          <div class="small text-secondary">Chat ID постачальника: {{ item.supplier_chat_id or 'не задано' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Покупець</h4>
+        <div><strong>{{ order.customer_name }} {{ order.customer_surname }}</strong></div>
+        <div>{{ order.phone }}</div>
+        <div>{{ order.email or '-' }}</div>
+        <div class="mt-3"><strong>Доставка:</strong> {{ order.delivery_method }}</div>
+        <div><strong>Тип:</strong> {{ order.carrier_service or '-' }}</div>
+        <div><strong>Відділення/індекс:</strong> {{ order.warehouse_number or '-' }}</div>
+        <div><strong>Оплата:</strong> {{ order.payment_method }}</div>
+        <div><strong>Місто:</strong> {{ order.city or '-' }}</div>
+        <div><strong>Адреса:</strong> {{ order.address or '-' }}</div>
+        <div><strong>Коментар:</strong> {{ order.comment or '-' }}</div>
+        <div class="mt-3 fs-5 fw-bold">Разом: {{ '%.0f'|format(order.total_amount) }} грн</div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Статус</h4>
+        <form method="post">
+          <select name="status" class="form-select mb-3">
+            {% for status in ['Нове замовлення', 'Підтверджено', 'Відправлено', 'Завершено', 'Скасовано'] %}
+            <option {% if order.status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-electric">Оновити статус</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <div class="eyebrow">Конструктор сторінок</div>
+    <h1 class="fw-bold mb-0">Керування текстами, кнопками і порядком блоків</h1>
+  </div>
+</div>
+
+<form method="post" class="row g-4">
+  {% for section, fields in grouped_fields.items() %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">{{ section }}</h4>
+        <div class="row g-3">
+          {% for field in fields %}
+          <div class="col-lg-6">
+            <label class="form-label">{{ field.label }}</label>
+            {% if field.type == 'textarea' %}
+            <textarea class="form-control" rows="4" name="{{ field.key }}">{{ field.value }}</textarea>
+            {% else %}
+            <input class="form-control" name="{{ field.key }}" value="{{ field.value }}">
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="col-12">
+    <button class="btn btn-electric">Зберегти зміни</button>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Каталог — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5 catalog-page-section">
+  <div class="container">
+    <div class="section-head mb-4 catalog-head">
+      <div class="eyebrow">{{ cms('catalog_eyebrow', 'Каталог') }}</div>
+      <h1 class="fw-bold">{{ cms('catalog_title', 'Каталог товарів AmperShop') }}</h1>
+      <p class="text-secondary mb-0">{{ cms('catalog_subtitle', 'Сучасна вітрина з продуманими фільтрами, швидким пошуком і товарами, які приємно переглядати та легко замовляти.') }}</p>
+    </div>
+    <form method="get" class="card border-0 shadow-sm rounded-4 p-4 mb-4 catalog-filter-card">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3"><label class="form-label">Пошук</label><input class="form-control" name="q" value="{{ search or '' }}" placeholder="Назва або опис"></div>
+        <div class="col-lg-2"><label class="form-label">Категорія</label><select class="form-select" name="category"><option value="">Усі</option>{% for cat in top_categories %}<option value="{{ cat.slug }}" {% if selected_category==cat.slug %}selected{% endif %}>{{ cat.name }}</option>{% endfor %}</select></div>
+        <div class="col-lg-2"><label class="form-label">Ціна від</label><input class="form-control" name="price_min" value="{{ price_min or '' }}"></div>
+        <div class="col-lg-2"><label class="form-label">Ціна до</label><input class="form-control" name="price_max" value="{{ price_max or '' }}"></div>
+        <div class="col-lg-2"><label class="form-label">Сортування</label><select class="form-select" name="sort"><option value="new" {% if sort=='new' %}selected{% endif %}>Нові</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>Популярні</option><option value="price_asc" {% if sort=='price_asc' %}selected{% endif %}>Ціна ↑</option><option value="price_desc" {% if sort=='price_desc' %}selected{% endif %}>Ціна ↓</option><option value="name" {% if sort=='name' %}selected{% endif %}>Назва</option></select></div>
+        <div class="col-lg-1 d-flex align-items-center"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="discount" value="1" {% if only_discount %}checked{% endif %}><label class="form-check-label">Sale</label></div></div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap mt-3">
+        <button class="btn btn-electric">Показати товари</button>
+        <a class="btn btn-outline-dark rounded-pill" href="{{ url_for('catalog') }}">Скинути</a>
+      </div>
+    </form>
+    <div class="row g-4">
+      {% for product in products %}
+        {% include 'partials/product_card.html' %}
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border rounded-4 p-4">За цими параметрами товари не знайдено. Спробуйте змінити фільтри або скинути пошук.</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

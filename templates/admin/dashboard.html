@@ -1,0 +1,80 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <div class="eyebrow">Дашборд</div>
+    <h1 class="fw-bold mb-0">Керування магазином</h1>
+  </div>
+  <a href="{{ url_for('admin_product_new') }}" class="btn btn-electric">+ Новий товар</a>
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-md-3"><div class="stat-card"><span>Товари</span><strong>{{ total_products }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Замовлення</span><strong>{{ total_orders }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Ліди</span><strong>{{ total_leads }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Відвідування</span><strong>{{ total_visits }}</strong></div></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm rounded-4 h-100">
+      <div class="card-body">
+        <h4 class="fw-bold mb-3">Огляд аналітики</h4>
+        <canvas id="visitsChart" height="110"></canvas>
+        <div class="row mt-4 g-3">
+          <div class="col-md-4"><div class="mini-stat"><span>Відвідування 7 днів</span><strong>{{ analytics.visits_7 }}</strong></div></div>
+          <div class="col-md-4"><div class="mini-stat"><span>Замовлення 30 днів</span><strong>{{ analytics.orders_30 }}</strong></div></div>
+          <div class="col-md-4"><div class="mini-stat"><span>Конверсія</span><strong>{{ analytics.conversion }}%</strong></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm rounded-4 h-100">
+      <div class="card-body">
+        <h4 class="fw-bold mb-3">Популярні товари</h4>
+        {% for title, views in analytics.top_products %}
+        <div class="d-flex justify-content-between py-2 border-bottom"><span>{{ title }}</span><strong>{{ views }}</strong></div>
+        {% else %}
+        <div class="text-secondary">Поки що немає переглядів товарів.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row g-4 mt-1">
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body">
+        <h4 class="fw-bold mb-3">Останні замовлення</h4>
+        {% for order in last_orders %}
+        <div class="d-flex justify-content-between py-2 border-bottom"><a href="{{ url_for('admin_order_detail', order_id=order.id) }}">#{{ order.id }} — {{ order.customer_name }} {{ order.customer_surname }}</a><strong>{{ '%.0f'|format(order.total_amount) }} грн</strong></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body">
+        <h4 class="fw-bold mb-3">Статус Telegram</h4>
+        {% for log in notif_logs %}
+        <div class="d-flex justify-content-between py-2 border-bottom gap-2">
+          <span class="small">{{ log.target or '-' }}</span>
+          <span class="badge {% if log.success %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ 'OK' if log.success else 'ERROR' }}</span>
+        </div>
+        {% else %}
+        <div class="text-secondary">Логи з'являться після тесту або нового замовлення.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+fetch('{{ url_for('analytics_chart') }}')
+  .then(r=>r.json())
+  .then(data=>{
+    const ctx = document.getElementById('visitsChart');
+    new Chart(ctx, {type:'line', data:{labels:data.labels, datasets:[{label:'Відвідування', data:data.values, tension:0.35}]}, options:{plugins:{legend:{display:false}}}})
+  });
+</script>
+{% endblock %}

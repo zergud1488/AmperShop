@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Дякуємо — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="thank-box text-center mx-auto">
+      <div class="eyebrow">Замовлення оформлено</div>
+      <h1 class="fw-bold mb-3">Дякуємо за покупку!</h1>
+      <p class="lead text-secondary">Ваше замовлення №{{ order.id }} успішно створене. Ми вже передали дані для обробки.</p>
+      <a href="{{ url_for('catalog') }}" class="btn btn-electric btn-lg">Повернутись у каталог</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

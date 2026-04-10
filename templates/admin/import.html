@@ -1,0 +1,34 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="mb-4">
+  <div class="eyebrow">Імпорт</div>
+  <h1 class="fw-bold mb-0">Імпорт додаткових товарів із файлу бази</h1>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <form method="post" enctype="multipart/form-data">
+          <label class="form-label">SQLite файл бази</label>
+          <input class="form-control mb-3" type="file" name="import_file" accept=".db,.sqlite,.sqlite3" required>
+          <button class="btn btn-electric">Імпортувати товари</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm rounded-4 h-100">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Що підтримується</h4>
+        <ul class="mb-0 text-secondary">
+          <li>таблиця products / product / items</li>
+          <li>категорії categories / category</li>
+          <li>поля title, description, price, old_price, category_id, is_top, supplier_chat_id</li>
+          <li>оновлення існуючих товарів за slug або title</li>
+          <li>додавання нових категорій автоматично</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

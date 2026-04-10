@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Мій кабінет — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div>
+        <div class="eyebrow">Кабінет</div>
+        <h1 class="fw-bold mb-0">Вітаємо, {{ current_user.full_name }}</h1>
+      </div>
+      <div class="d-flex gap-2"><a href="{{ url_for('wishlist_view') }}" class="btn btn-outline-dark rounded-pill">Обране</a><a href="{{ url_for('catalog') }}" class="btn btn-electric">Перейти до покупок</a></div>
+    </div>
+    <div class="row g-4 mb-4">
+      <div class="col-md-3"><div class="stat-card"><span>Email</span><strong class="fs-5">{{ current_user.email }}</strong></div></div>
+      <div class="col-md-3"><div class="stat-card"><span>Замовлень</span><strong>{{ orders|length }}</strong></div></div>
+      <div class="col-md-3"><div class="stat-card"><span>Обране</span><strong>{{ wishlist_items }}</strong></div></div>
+      <div class="col-md-3"><div class="stat-card"><span>Статус</span><strong class="fs-5">Активний клієнт</strong></div></div>
+    </div>
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h3 class="fw-bold mb-3">Історія замовлень</h3>
+        {% if orders %}
+          {% for order in orders %}
+          <div class="border rounded-4 p-3 mb-3">
+            <div class="d-flex justify-content-between flex-wrap gap-3 mb-2">
+              <strong>Замовлення #{{ order.id }}</strong>
+              <span>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+            </div>
+            <div class="text-secondary mb-2">{{ order.delivery_method }} • {{ order.payment_method }}</div>
+            <div class="small text-secondary mb-2">Промокод: {{ order.promo_code or '—' }}</div>
+            <div class="fw-semibold">{{ '%.0f'|format(order.total_amount) }} грн</div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="text-secondary">Поки що у вас немає замовлень.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

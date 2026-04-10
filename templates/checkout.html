@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Оформлення — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="row g-5">
+      <div class="col-lg-7">
+        <div class="section-head mb-4">
+          <div class="eyebrow">{{ cms('checkout_eyebrow', 'Оформлення') }}</div>
+          <h1 class="fw-bold">{{ cms('checkout_title', 'Дані для доставки') }}</h1>
+          <p class="text-secondary mb-0">{{ cms('checkout_subtitle', 'Заповніть контактні дані для швидкого підтвердження замовлення та комфортної доставки обраних товарів.') }}</p>
+        </div>
+        <form method="post" class="card border-0 shadow-sm rounded-4 needs-validation" novalidate id="checkoutForm">
+          <div class="card-body p-4">
+            <div class="row g-3">
+              <div class="col-md-6"><input required class="form-control" name="customer_name" placeholder="Ім'я" value="{{ current_user.full_name.split(' ')[0] if current_user.is_authenticated and not current_user.is_admin else '' }}"></div>
+              <div class="col-md-6"><input required class="form-control" name="customer_surname" placeholder="Прізвище"></div>
+              <div class="col-md-4">
+                <select id="phoneCountryCode" name="phone_country_code" class="form-select" required>
+                  {% for item in phone_country_codes %}
+                  <option value="{{ item.code }}">{{ item.country }} ({{ item.code }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-8">
+                <input required class="form-control" id="phoneInput" name="phone" placeholder="Номер телефону" pattern="[0-9\s\-\(\)]{6,}">
+                <div class="small mt-1" id="phoneValidationHint"></div>
+              </div>
+              <div class="col-md-6">
+                <input class="form-control" type="email" id="emailInput" name="email" placeholder="Email" value="{{ current_user.email if current_user.is_authenticated and not current_user.is_admin else '' }}">
+                <div class="small mt-1" id="emailValidationHint"></div>
+              </div>
+              <div class="col-md-6 position-relative">
+                <input class="form-control" id="citySearch" name="city" placeholder="Місто" autocomplete="off">
+                <input type="hidden" name="city_ref" id="cityRef">
+                <div class="autocomplete-box" id="cityResults"></div>
+              </div>
+              <div class="col-md-6">
+                <select name="delivery_method" id="deliveryMethod" class="form-select" required>
+                  <option value="">Метод доставки</option>
+                  <option>Нова Пошта</option>
+                  <option>Meest</option>
+                  <option>Укрпошта</option>
+                  <option>Кур'єр</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <select name="carrier_service" class="form-select">
+                  <option value="">Тип доставки</option>
+                  <option>Відділення</option>
+                  <option>Поштомат</option>
+                  <option>Кур'єрська доставка</option>
+                </select>
+              </div>
+              <div class="col-md-6 position-relative">
+                <input class="form-control" name="warehouse_number" id="branchSearch" placeholder="Відділення / поштомат / індекс" autocomplete="off">
+                <div class="autocomplete-box" id="branchResults"></div>
+              </div>
+              <div class="col-md-6"><input class="form-control" name="address" placeholder="Адреса / вулиця / будинок"></div>
+              <div class="col-md-6">
+                <select name="payment_method" class="form-select" required>
+                  <option value="">Метод оплати</option>
+                  <option>Післяплата</option>
+                  <option>Оплата на карту</option>
+                </select>
+              </div>
+              <div class="col-12"><textarea class="form-control" rows="4" name="comment" placeholder="Коментар до замовлення"></textarea></div>
+            </div>
+            <button class="btn btn-electric btn-lg mt-4">Підтвердити замовлення</button>
+          </div>
+        </form>
+      </div>
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm rounded-4 sticky-lg-top" style="top:110px;">
+          <div class="card-body p-4">
+            <h4 class="fw-bold mb-3">Склад замовлення</h4>
+            {% for item in items %}
+            <div class="d-flex justify-content-between gap-3 py-2 border-bottom">
+              <div>{{ item.product.title }} × {{ item.quantity }}</div>
+              <strong>{{ '%.0f'|format(item.subtotal) }} грн</strong>
+            </div>
+            {% endfor %}
+            <div class="d-flex justify-content-between mt-3"><span>Сума</span><strong>{{ '%.0f'|format(total) }} грн</strong></div>
+            <div class="d-flex justify-content-between mt-2"><span>Знижка</span><strong>-{{ '%.0f'|format(discount) }} грн</strong></div>
+            <div class="d-flex justify-content-between mt-4 fs-5 fw-bold border-top pt-3">
+              <span>Разом</span>
+              <span>{{ '%.0f'|format(final_total) }} грн</span>
+            </div>
+            {% if promo %}<div class="small text-secondary mt-2">Промокод: {{ promo.code }}</div>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

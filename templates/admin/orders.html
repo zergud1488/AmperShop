@@ -1,0 +1,24 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">Замовлення</div><h1 class="fw-bold mb-0">Всі замовлення</h1></div>
+<div class="card border-0 shadow-sm rounded-4">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>#</th><th>Клієнт</th><th>Телефон</th><th>Сума</th><th>Статус</th><th>Дата</th><th></th></tr></thead>
+      <tbody>
+      {% for order in orders %}
+      <tr>
+        <td>{{ order.id }}</td>
+        <td>{{ order.customer_name }} {{ order.customer_surname }}</td>
+        <td>{{ order.phone }}</td>
+        <td>{{ '%.0f'|format(order.total_amount) }} грн</td>
+        <td>{{ order.status }}</td>
+        <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td><a href="{{ url_for('admin_order_detail', order_id=order.id) }}" class="btn btn-sm btn-outline-dark">Відкрити</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

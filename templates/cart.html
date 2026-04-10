@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Кошик — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="section-head mb-4"><div class="eyebrow">Кошик</div><h1 class="fw-bold">Перевір своє замовлення</h1></div>
+    {% if items %}
+    <form method="post" action="{{ url_for('cart_update') }}">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+              {% for item in items %}
+              <div class="row g-3 align-items-center py-3 {% if not loop.last %}border-bottom{% endif %}">
+                <div class="col-md-6">
+                  <div class="fw-bold">{{ item.product.title }}</div>
+                  <div class="text-secondary small">{{ item.product.short_description }}</div>
+                </div>
+                <div class="col-md-2"><input type="number" min="0" class="form-control" name="qty_{{ item.product.id }}" value="{{ item.quantity }}"></div>
+                <div class="col-md-2"><div class="fw-semibold">{{ '%.0f'|format(item.product.current_price) }} грн</div></div>
+                <div class="col-md-2 text-md-end"><strong>{{ '%.0f'|format(item.subtotal) }} грн</strong></div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card border-0 shadow-sm rounded-4 sticky-lg-top" style="top:110px;">
+            <div class="card-body p-4">
+              <h4 class="fw-bold mb-3">Промокод</h4>
+              <input class="form-control mb-2" name="promo_code" placeholder="Наприклад WELCOME10" value="{{ promo.code if promo else '' }}">
+              <div class="d-flex gap-2 mb-4">
+                <button class="btn btn-electric flex-grow-1">Оновити кошик</button>
+                {% if promo %}<button class="btn btn-outline-dark rounded-pill" name="clear_promo" value="1">X</button>{% endif %}
+              </div>
+              <div class="d-flex justify-content-between py-2"><span>Сума</span><strong>{{ '%.0f'|format(total) }} грн</strong></div>
+              <div class="d-flex justify-content-between py-2"><span>Знижка</span><strong>-{{ '%.0f'|format(discount) }} грн</strong></div>
+              <div class="d-flex justify-content-between py-3 border-top mt-2 fs-5"><span class="fw-bold">До оплати</span><strong>{{ '%.0f'|format(final_total) }} грн</strong></div>
+              <a href="{{ url_for('checkout') }}" class="btn btn-electric w-100 mt-3">Оформити замовлення</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    {% else %}
+    <div class="alert alert-light border rounded-4 p-4">Кошик порожній. <a href="{{ url_for('catalog') }}">Перейти до покупок</a></div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

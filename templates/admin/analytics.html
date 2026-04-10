@@ -1,0 +1,32 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">Аналітика</div><h1 class="fw-bold mb-0">Статистика сайту</h1></div>
+<div class="row g-4 mb-4">
+  <div class="col-md-3"><div class="stat-card"><span>Відвідування 30 днів</span><strong>{{ analytics.visits_30 }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Замовлення 30 днів</span><strong>{{ analytics.orders_30 }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Ліди 30 днів</span><strong>{{ analytics.leads_30 }}</strong></div></div>
+  <div class="col-md-3"><div class="stat-card"><span>Дохід 30 днів</span><strong>{{ '%.0f'|format(analytics.revenue_30) }} грн</strong></div></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Популярні сторінки</h4>
+        {% for path, cnt in analytics.popular_pages %}
+        <div class="d-flex justify-content-between py-2 border-bottom"><span>{{ path }}</span><strong>{{ cnt }}</strong></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">Топ переглядів товарів</h4>
+        {% for title, views in analytics.top_products %}
+        <div class="d-flex justify-content-between py-2 border-bottom"><span>{{ title }}</span><strong>{{ views }}</strong></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="mb-4"><div class="eyebrow">Ліди</div><h1 class="fw-bold mb-0">Заявки з сайту</h1></div>
+<div class="card border-0 shadow-sm rounded-4">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>Ім'я</th><th>Телефон</th><th>Email</th><th>Повідомлення</th><th>Дата</th></tr></thead>
+      <tbody>
+      {% for lead in leads %}
+      <tr><td>{{ lead.name }}</td><td>{{ lead.phone }}</td><td>{{ lead.email }}</td><td>{{ lead.message }}</td><td>{{ lead.created_at.strftime('%d.%m.%Y %H:%M') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

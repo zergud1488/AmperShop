@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}{{ product.title }} — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5 product-page-section">
+  <div class="container">
+    <div class="row g-5 align-items-start">
+      <div class="col-lg-6">
+        <div class="product-gallery-shell">
+          <div class="product-gallery-main mb-3">
+            {% if product.images %}
+              <img id="mainProductImage" src="/{{ product.images[0].image_path }}" class="w-100 rounded-4" alt="{{ product.title }}">
+            {% else %}
+              <div class="product-placeholder product-placeholder-lg">AmperShop</div>
+            {% endif %}
+          </div>
+          {% if product.images|length > 1 %}
+          <div class="d-flex gap-3 flex-wrap">
+            {% for image in product.images %}
+            <img src="/{{ image.image_path }}" class="thumb-img" onclick="document.getElementById('mainProductImage').src=this.src" alt="{{ image.alt_text or product.title }}">
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="product-summary-card">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <span class="glass-chip">{{ product.category.name }}</span>
+            {% if product.is_top %}<span class="glass-chip">TOP позиція</span>{% endif %}
+            <span class="glass-chip">AmperShop Selection</span>
+          </div>
+          <h1 class="fw-bold mb-3">{{ product.title }}</h1>
+          <p class="lead text-secondary">{{ product.short_description }}</p>
+          <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+            <span class="display-6 fw-bold">{{ '%.0f'|format(product.price) }} грн</span>
+            {% if product.discount_enabled and product.old_price %}
+            <span class="old-price fs-4">{{ '%.0f'|format(product.old_price) }} грн</span>
+            <span class="badge badge-sale">Вигідна ціна</span>
+            {% endif %}
+          </div>
+          <div class="final-trust-row mb-4">
+            <div>Актуальна ціна</div>
+            <div>Швидка доставка</div>
+            <div>Зручне оформлення</div>
+          </div>
+          <div class="card border-0 shadow-sm rounded-4 mb-4 final-detail-card">
+            <div class="card-body">
+              <div class="mb-3"><strong>Статус:</strong> {{ product.stock_status }}</div>
+              <div class="mb-0"><strong>Опис товару:</strong><br>{{ product.description }}</div>
+            </div>
+          </div>
+          {% if product.specifications %}
+          <div class="card border-0 shadow-sm rounded-4 mb-4 final-detail-card">
+            <div class="card-body">
+              <h5>Характеристики</h5>
+              <pre class="spec-pre">{{ product.specifications }}</pre>
+            </div>
+          </div>
+          {% endif %}
+          <div class="d-grid d-sm-flex gap-3 align-items-center">
+            <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+              <button class="btn btn-electric btn-lg px-5">Додати у кошик</button>
+            </form>
+            {% if current_user.is_authenticated and not current_user.is_admin %}
+            <form method="post" action="{{ url_for('wishlist_add', product_id=product.id) }}">
+              <button class="btn btn-outline-dark rounded-pill btn-lg px-4">В обране</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pb-5">
+  <div class="container">
+    <div class="section-head mb-4">
+      <div class="eyebrow">Рекомендації</div>
+      <h2 class="fw-bold">Схожі товари</h2>
+    </div>
+    <div class="row g-4">
+      {% for product in related %}
+        {% include 'partials/product_card.html' %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<section class="pb-5" id="reviews">
+  <div class="container">
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <div class="section-head mb-4">
+          <div class="eyebrow">Відгуки покупців</div>
+          <h2 class="fw-bold mb-2">Що говорять про товар</h2>
+          <div class="text-secondary">{% if reviews %}{{ reviews|length }} відгуків{% if rating_avg %} • середня оцінка {{ rating_avg }}/5{% endif %}{% else %}Станьте першим, хто поділиться враженням про цей товар.{% endif %}</div>
+        </div>
+        <div class="review-list d-grid gap-3">
+          {% for review in reviews %}
+          <div class="review-card">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+              <div>
+                <div class="fw-bold">{{ review.author_name }}</div>
+                <div class="review-stars">{% for _ in range(review.rating) %}★{% endfor %}{% for _ in range(5-review.rating) %}<span class="text-muted">★</span>{% endfor %}</div>
+              </div>
+              <div class="small text-secondary">{{ review.created_at.strftime('%d.%m.%Y') }}</div>
+            </div>
+            <p class="mb-0 mt-3 text-secondary">{{ review.comment }}</p>
+          </div>
+          {% else %}
+          <div class="review-card text-secondary">Поки що відгуків немає. Після першого замовлення покупці зможуть оцінити товар тут.</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="review-form-card">
+          <div class="eyebrow">Додати відгук</div>
+          <h3 class="fw-bold mb-3">Поділіться враженням про покупку</h3>
+          <form method="post" action="{{ url_for('product_review_submit', slug=product.slug) }}">
+            <input class="form-control mb-3" name="author_name" placeholder="Ваше ім’я" value="{{ current_user.full_name if current_user.is_authenticated and not current_user.is_admin else '' }}" required>
+            <input class="form-control mb-3" type="email" name="email" placeholder="Email" value="{{ current_user.email if current_user.is_authenticated and not current_user.is_admin else '' }}">
+            <select class="form-select mb-3" name="rating">
+              <option value="5">5 / 5 — Відмінно</option>
+              <option value="4">4 / 5 — Дуже добре</option>
+              <option value="3">3 / 5 — Добре</option>
+              <option value="2">2 / 5 — Нормально</option>
+              <option value="1">1 / 5 — Потрібно покращити</option>
+            </select>
+            <textarea class="form-control mb-3" name="comment" rows="5" placeholder="Що вам сподобалося в товарі, сервісі або доставці?" required></textarea>
+            <button class="btn btn-electric w-100">Опублікувати відгук</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sticky-buy-bar d-lg-none">
+  <div>
+    <div class="small text-secondary">{{ product.title }}</div>
+    <div class="fw-bold">{{ '%.0f'|format(product.price) }} грн</div>
+  </div>
+  <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+    <button class="btn btn-electric">Купити</button>
+  </form>
+</div>
+{% endblock %}

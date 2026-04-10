@@ -1,0 +1,41 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm rounded-4"><div class="card-body p-4">
+      <div class="eyebrow">Маркетинг</div><h1 class="fw-bold mb-3">Промокоди</h1>
+      <form method="post" class="row g-3">
+        <div class="col-12"><label class="form-label">Код</label><input class="form-control" name="code" placeholder="WELCOME10" required></div>
+        <div class="col-md-6"><label class="form-label">% знижки</label><input class="form-control" name="discount_percent"></div>
+        <div class="col-md-6"><label class="form-label">Фікс. знижка</label><input class="form-control" name="discount_amount"></div>
+        <div class="col-md-6"><label class="form-label">Мін. сума</label><input class="form-control" name="min_order_amount" value="0"></div>
+        <div class="col-md-6"><label class="form-label">Ліміт використань</label><input class="form-control" name="usage_limit"></div>
+        <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="is_active" checked><label class="form-check-label">Активний</label></div></div>
+        <div class="col-12"><button class="btn btn-electric">Створити промокод</button></div>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm rounded-4"><div class="card-body p-4">
+      <h4 class="fw-bold mb-3">Список кодів</h4>
+      <div class="table-responsive"><table class="table align-middle">
+        <thead><tr><th>Код</th><th>Знижка</th><th>Використано</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          {% for promo in promos %}
+          <tr>
+            <td><strong>{{ promo.code }}</strong></td>
+            <td>{{ promo.discount_percent ~ '%' if promo.discount_percent else ('%.0f'|format(promo.discount_amount) ~ ' грн' if promo.discount_amount else '—') }}</td>
+            <td>{{ promo.used_count }}{% if promo.usage_limit %} / {{ promo.usage_limit }}{% endif %}</td>
+            <td><span class="badge {% if promo.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ 'Активний' if promo.is_active else 'Вимкнений' }}</span></td>
+            <td class="text-end d-flex gap-2 justify-content-end">
+              <form method="post" action="{{ url_for('admin_promocode_toggle', promo_id=promo.id) }}"><button class="btn btn-sm btn-outline-dark rounded-pill">On/Off</button></form>
+              <form method="post" action="{{ url_for('admin_promocode_delete', promo_id=promo.id) }}"><button class="btn btn-sm btn-outline-danger rounded-pill">Видалити</button></form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

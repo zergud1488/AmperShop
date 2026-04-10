@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Обране — AmperShop{% endblock %}
+{% block content %}
+<section class="py-5">
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div><div class="eyebrow">Обране</div><h1 class="fw-bold mb-0">Твої збережені товари</h1></div>
+      <a href="{{ url_for('catalog') }}" class="btn btn-electric">У каталог</a>
+    </div>
+    <div class="row g-4">
+      {% for product in products %}
+      <div class="col-md-6 col-lg-4">
+        <div class="product-card h-100 p-3 d-flex flex-column">
+          <div class="fw-bold fs-5 mb-2">{{ product.title }}</div>
+          <div class="text-secondary small mb-3">{{ product.short_description }}</div>
+          <div class="mb-3"><strong>{{ '%.0f'|format(product.current_price) }} грн</strong></div>
+          <div class="mt-auto d-grid gap-2">
+            <a class="btn btn-electric" href="{{ url_for('product_detail', slug=product.slug) }}">Детальніше</a>
+            <form method="post" action="{{ url_for('wishlist_remove', product_id=product.id) }}"><button class="btn btn-outline-dark rounded-pill w-100">Прибрати</button></form>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12"><div class="alert alert-light border rounded-4 p-4">Обране поки порожнє.</div></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}
