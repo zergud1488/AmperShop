@@ -1,39 +1,119 @@
-{% extends 'base.html' %}
-{% block title %}Мій кабінет — AmperShop{% endblock %}
+{% extends "base.html" %}
 {% block content %}
-<section class="py-5">
-  <div class="container">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
-      <div>
-        <div class="eyebrow">Кабінет</div>
-        <h1 class="fw-bold mb-0">Вітаємо, {{ current_user.full_name }}</h1>
-      </div>
-      <div class="d-flex gap-2"><a href="{{ url_for('wishlist_view') }}" class="btn btn-outline-dark rounded-pill">Обране</a><a href="{{ url_for('catalog') }}" class="btn btn-electric">Перейти до покупок</a></div>
+<section class="container py-4 py-lg-5">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Особистий кабінет</h1>
+      <div class="text-secondary">Історія замовлень, статуси та товари у ваших покупках</div>
     </div>
-    <div class="row g-4 mb-4">
-      <div class="col-md-3"><div class="stat-card"><span>Email</span><strong class="fs-5">{{ current_user.email }}</strong></div></div>
-      <div class="col-md-3"><div class="stat-card"><span>Замовлень</span><strong>{{ orders|length }}</strong></div></div>
-      <div class="col-md-3"><div class="stat-card"><span>Обране</span><strong>{{ wishlist_items }}</strong></div></div>
-      <div class="col-md-3"><div class="stat-card"><span>Статус</span><strong class="fs-5">Активний клієнт</strong></div></div>
-    </div>
-    <div class="card border-0 shadow-sm rounded-4">
-      <div class="card-body p-4">
-        <h3 class="fw-bold mb-3">Історія замовлень</h3>
-        {% if orders %}
-          {% for order in orders %}
-          <div class="border rounded-4 p-3 mb-3">
-            <div class="d-flex justify-content-between flex-wrap gap-3 mb-2">
-              <strong>Замовлення #{{ order.id }}</strong>
-              <span>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
-            </div>
-            <div class="text-secondary mb-2">{{ order.delivery_method }} • {{ order.payment_method }}</div>
-            <div class="small text-secondary mb-2">Промокод: {{ order.promo_code or '—' }}</div>
-            <div class="fw-semibold">{{ '%.0f'|format(order.total_amount) }} грн</div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-4 h-100">
+        <div class="card-body p-4">
+          <div class="small text-uppercase text-secondary fw-semibold mb-2">Профіль</div>
+          <div class="fs-5 fw-bold mb-1">{{ current_user.full_name or current_user.email }}</div>
+          <div class="text-secondary mb-3">{{ current_user.email }}</div>
+
+          {% if current_user.phone %}
+            <div class="small mb-2"><span class="text-secondary">Телефон:</span> {{ current_user.phone }}</div>
+          {% endif %}
+
+          <div class="small">
+            <span class="text-secondary">Email підтверджено:</span>
+            {% if current_user.email_verified %}
+              <span class="badge bg-success-subtle text-success-emphasis rounded-pill">Так</span>
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill">Очікує підтвердження</span>
+            {% endif %}
           </div>
-          {% endfor %}
-        {% else %}
-        <div class="text-secondary">Поки що у вас немає замовлень.</div>
-        {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+              <div class="small text-uppercase text-secondary fw-semibold">Мої замовлення</div>
+              <h2 class="h5 mb-0">Історія замовлень</h2>
+            </div>
+          </div>
+
+          {% if orders %}
+            <div class="d-grid gap-3">
+              {% for order in orders %}
+                {% set status_class =
+                  'bg-warning text-dark' if order.status == 'В роботі'
+                  else 'bg-info text-dark' if order.status == 'Підтверджено'
+                  else 'bg-primary' if order.status == 'Відправлено'
+                  else 'bg-success' if order.status == 'Завершено'
+                  else 'bg-danger' if order.status == 'Скасовано'
+                  else 'bg-dark'
+                %}
+                <div class="border rounded-4 p-3 p-md-4">
+                  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                    <div>
+                      <div class="fw-bold">Замовлення #{{ order.id }}</div>
+                      <div class="small text-secondary">
+                        {{ order.created_at.strftime("%d.%m.%Y %H:%M") if order.created_at else "—" }}
+                      </div>
+                    </div>
+                    <span class="badge {{ status_class }} rounded-pill px-3 py-2 fs-6">
+                      {{ order.status or "Нове замовлення" }}
+                    </span>
+                  </div>
+
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                      <div class="small text-secondary">Доставка</div>
+                      <div>{{ order.delivery_method or "—" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="small text-secondary">Оплата</div>
+                      <div>{{ order.payment_method or "—" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="small text-secondary">Промокод</div>
+                      <div>{{ order.promo_code or "—" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="small text-secondary">Сума</div>
+                      <div class="fw-semibold">{{ '%.0f'|format(order.total_amount or 0) }} грн</div>
+                    </div>
+                  </div>
+
+                  {% if order.items %}
+                    <div class="small text-uppercase text-secondary fw-semibold mb-2">Товари у замовленні</div>
+                    <div class="d-grid gap-2">
+                      {% for item in order.items %}
+                        <div class="d-flex justify-content-between align-items-center gap-3 bg-light rounded-3 px-3 py-2">
+                          <div>
+                            <div class="fw-semibold">{{ item.product_title }}</div>
+                            <div class="small text-secondary">
+                              {% if item.unit_price is defined and item.unit_price %}
+                                {{ '%.0f'|format(item.unit_price) }} грн
+                              {% elif item.price is defined and item.price %}
+                                {{ '%.0f'|format(item.price) }} грн
+                              {% else %}
+                                Ціна уточнюється
+                              {% endif %}
+                            </div>
+                          </div>
+                          <div class="small text-secondary">× {{ item.quantity }}</div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-secondary">У вас ще немає замовлень.</div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>

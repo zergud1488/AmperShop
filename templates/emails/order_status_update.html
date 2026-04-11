@@ -1,0 +1,11 @@
+{% extends 'emails/_base.html' %}
+{% block body %}
+<h1 style="font-size:28px;margin:0 0 12px;">Статус замовлення #{{ order.id }} оновлено</h1>
+<p class="muted">Поточний статус вашого замовлення: <strong>{{ status_label }}</strong>.</p>
+<div class="meta">
+  <div><strong>Отримувач:</strong> {{ order.customer_name }} {{ order.customer_surname }}</div>
+  <div><strong>Сума:</strong> {{ '%.0f'|format(order.total_amount) }} грн</div>
+  <div><strong>Доставка:</strong> {{ order.delivery_method }}</div>
+</div>
+<p class="muted" style="margin-top:20px;">Увійдіть у свій кабінет на сайті, щоб переглянути склад замовлення та історію покупок.</p>
+{% endblock %}

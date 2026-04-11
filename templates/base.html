@@ -53,6 +53,12 @@
     {% block content %}{% endblock %}
   </main>
 
+  <div class="mobile-cart-dock d-lg-none">
+    <a href="{{ url_for('catalog') }}" class="mobile-cart-link">Каталог</a>
+    <a href="{{ url_for('cart_view') }}" class="mobile-cart-link mobile-cart-link--cart">Кошик <span class="badge rounded-pill text-bg-dark">{{ cart_count }}</span></a>
+    <a href="{{ url_for('account_dashboard') if current_user.is_authenticated and not current_user.is_admin else url_for('account_login') }}" class="mobile-cart-link">Кабінет</a>
+  </div>
+
   <footer class="site-footer mt-5">
     <div class="container py-5">
       <div class="row g-4 align-items-start">

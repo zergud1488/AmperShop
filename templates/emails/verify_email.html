@@ -1,0 +1,7 @@
+{% extends 'emails/_base.html' %}
+{% block body %}
+<h1 style="font-size:30px;margin:0 0 12px;">Підтвердіть вашу email-адресу</h1>
+<p class="muted">Вітаємо, {{ user.full_name }}. Щоб завершити реєстрацію та отримувати листи про замовлення, підтвердіть адресу електронної пошти.</p>
+<a class="btn" href="{{ verify_url }}">Підтвердити email</a>
+<p class="muted" style="margin-top:20px;">Якщо кнопка не відкривається, скористайтеся цим посиланням:<br>{{ verify_url }}</p>
+{% endblock %}

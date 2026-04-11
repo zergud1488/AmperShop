@@ -1,19 +1,96 @@
 {% extends 'admin/base.html' %}
 {% block content %}
-<div class="mb-4"><div class="eyebrow">Товар</div><h1 class="fw-bold mb-0">{{ 'Редагування' if product else 'Створення товару' }}</h1></div>
+<div class="mb-4">
+  <div class="eyebrow">Товар</div>
+  <h1 class="fw-bold mb-0">{{ 'Редагування' if product else 'Створення товару' }}</h1>
+</div>
+
 <form method="post" enctype="multipart/form-data" class="card border-0 shadow-sm rounded-4">
   <div class="card-body p-4">
     <div class="row g-3">
-      <div class="col-md-8"><label class="form-label">Назва</label><input required class="form-control" name="title" value="{{ product.title if product else '' }}"></div>
-      <div class="col-md-4"><label class="form-label">Категорія</label><select class="form-select" name="category_id">{% for category in categories %}<option value="{{ category.id }}" {% if product and product.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select></div>
-      <div class="col-md-6"><label class="form-label">Ціна</label><input step="0.01" class="form-control" name="price" value="{{ product.price if product else '' }}"></div>
-      <div class="col-md-6"><label class="form-label">Стара ціна</label><input step="0.01" class="form-control" name="old_price" value="{{ product.old_price if product and product.old_price else '' }}"></div>
-      <div class="col-md-6"><label class="form-label">Статус наявності</label><input class="form-control" name="stock_status" value="{{ product.stock_status if product else 'В наявності' }}"></div>
-      <div class="col-md-6"><label class="form-label">Chat ID постачальника</label><input class="form-control" name="supplier_chat_id" value="{{ product.supplier_chat_id if product else '' }}"></div>
-      <div class="col-12"><label class="form-label">Короткий опис</label><input class="form-control" name="short_description" value="{{ product.short_description if product else '' }}"></div>
-      <div class="col-12"><label class="form-label">Опис</label><textarea class="form-control" rows="5" name="description">{{ product.description if product else '' }}</textarea></div>
-      <div class="col-12"><label class="form-label">Характеристики</label><textarea class="form-control" rows="6" name="specifications">{{ product.specifications if product else '' }}</textarea></div>
-      <div class="col-12"><label class="form-label">Фото товару</label><input class="form-control" type="file" name="images" accept="image/*" multiple></div>
+      <div class="col-md-8">
+        <label class="form-label">Назва</label>
+        <input required class="form-control" name="title" value="{{ product.title if product else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Категорія</label>
+        <select class="form-select" name="category_id">
+          {% for category in categories %}
+          <option value="{{ category.id }}" {% if product and product.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Ціна постачальника</label>
+        <input step="0.01" class="form-control" name="supplier_price" value="{{ product.supplier_price if product and product.supplier_price is not none else '' }}" placeholder="Напр. 900">
+        <div class="form-text">Собівартість або сума, яку потрібно виплатити постачальнику.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Ціна на сайті</label>
+        <input step="0.01" class="form-control" name="price" value="{{ product.price if product else '' }}" placeholder="Напр. 990">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Стара ціна</label>
+        <input step="0.01" class="form-control" name="old_price" value="{{ product.old_price if product and product.old_price else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Статус наявності</label>
+        <input class="form-control" name="stock_status" value="{{ product.stock_status if product else 'В наявності' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Канал сповіщення постачальника</label>
+        <select class="form-select" name="supplier_notification_channel">
+          {% set current_channel = product.supplier_notification_channel if product and product.supplier_notification_channel else 'telegram' %}
+          {% for value, label in supplier_channel_options %}
+          <option value="{{ value }}" {% if current_channel == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Chat ID постачальника</label>
+        <input class="form-control" name="supplier_chat_id" value="{{ product.supplier_chat_id if product else '' }}" placeholder="Для Telegram-сповіщень">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Email постачальника</label>
+        <input class="form-control" name="supplier_email" value="{{ product.supplier_email if product else '' }}" placeholder="supplier@example.com">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label d-block mb-2">Доступні служби доставки для цього товару</label>
+        {% set selected_methods = product.delivery_methods_list() if product else ['nova_poshta', 'meest', 'ukrposhta'] %}
+        <div class="row g-2">
+          {% for value, label in delivery_method_options %}
+          <div class="col-md-4">
+            <label class="delivery-check">
+              <input type="checkbox" name="available_delivery_methods" value="{{ value }}" {% if value in selected_methods %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="form-text mt-2">На checkout покупцю будуть доступні лише ті служби, які ти відмітиш для товару.</div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Короткий опис</label>
+        <input class="form-control" name="short_description" value="{{ product.short_description if product else '' }}">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Опис</label>
+        <textarea class="form-control" rows="5" name="description">{{ product.description if product else '' }}</textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Характеристики</label>
+        <textarea class="form-control" rows="6" name="specifications">{{ product.specifications if product else '' }}</textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Фото товару</label>
+        <input class="form-control" type="file" name="images" accept="image/*" multiple>
+      </div>
+
       {% if product and product.images %}
       <div class="col-12">
         <label class="form-label">Поточні фото</label>
@@ -27,10 +104,30 @@
         </div>
       </div>
       {% endif %}
-      <div class="col-md-4 form-check ms-2"><input class="form-check-input" type="checkbox" name="discount_enabled" {% if product and product.discount_enabled %}checked{% endif %}><label class="form-check-label">Увімкнути знижку</label></div>
-      <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" name="is_top" {% if product and product.is_top %}checked{% endif %}><label class="form-check-label">Показувати як ТОП</label></div>
-      <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" name="is_active" {% if not product or product.is_active %}checked{% endif %}><label class="form-check-label">Активний товар</label></div>
+
+      {% if product and product.supplier_price is not none %}
+      <div class="col-12">
+        <div class="alert alert-light border rounded-4 mb-0">
+          Маржа магазину для поточної ціни:
+          <strong>{{ '%.0f'|format(product.price - product.supplier_price) }} грн</strong>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="col-md-4 form-check ms-2">
+        <input class="form-check-input" type="checkbox" name="discount_enabled" {% if product and product.discount_enabled %}checked{% endif %}>
+        <label class="form-check-label">Увімкнути знижку</label>
+      </div>
+      <div class="col-md-4 form-check">
+        <input class="form-check-input" type="checkbox" name="is_top" {% if product and product.is_top %}checked{% endif %}>
+        <label class="form-check-label">Показувати як ТОП</label>
+      </div>
+      <div class="col-md-4 form-check">
+        <input class="form-check-input" type="checkbox" name="is_active" {% if not product or product.is_active %}checked{% endif %}>
+        <label class="form-check-label">Активний товар</label>
+      </div>
     </div>
+
     <button class="btn btn-electric mt-4">Зберегти товар</button>
   </div>
 </form>

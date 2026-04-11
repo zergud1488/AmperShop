@@ -1,0 +1,9 @@
+{% extends 'emails/_base.html' %}
+{% block body %}
+<h1 style="font-size:30px;margin:0 0 12px;">{{ title }}</h1>
+<p class="muted">{{ preheader }}</p>
+<div class="muted">{{ message_html|safe }}</div>
+{% if action_url and action_text %}
+<a class="btn" href="{{ action_url }}">{{ action_text }}</a>
+{% endif %}
+{% endblock %}

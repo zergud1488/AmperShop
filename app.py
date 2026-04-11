@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import secrets
+import smtplib
 import sqlite3
 import uuid
 from collections import defaultdict
@@ -13,6 +15,7 @@ import phonenumbers
 import requests
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
+from email.message import EmailMessage
 from email_validator import EmailNotValidError, validate_email
 from flask import (
     Flask,
@@ -37,7 +40,36 @@ from flask_sqlalchemy import SQLAlchemy
 from PIL import Image
 from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
+
+UKRAINE_REGIONS = [
+    "Вінницька",
+    "Волинська",
+    "Дніпропетровська",
+    "Донецька",
+    "Житомирська",
+    "Закарпатська",
+    "Запорізька",
+    "Івано-Франківська",
+    "Київська",
+    "Кіровоградська",
+    "Луганська",
+    "Львівська",
+    "Миколаївська",
+    "Одеська",
+    "Полтавська",
+    "Рівненська",
+    "Сумська",
+    "Тернопільська",
+    "Харківська",
+    "Херсонська",
+    "Хмельницька",
+    "Черкаська",
+    "Чернівецька",
+    "Чернігівська",
+    "м. Київ"
+]
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
@@ -51,6 +83,32 @@ COUNTRY_PHONE_CODES = [
     {"code": "+1", "country": "США / Канада", "region": "US"},
     {"code": "+373", "country": "Молдова", "region": "MD"},
     {"code": "+40", "country": "Румунія", "region": "RO"},
+]
+
+DELIVERY_METHOD_OPTIONS = [
+    ("nova_poshta", "Нова Пошта"),
+    ("meest", "Meest"),
+    ("ukrposhta", "Укрпошта"),
+    ("courier", "Кур'єр"),
+    ("pickup", "Самовивіз"),
+]
+DELIVERY_METHOD_LABELS = {key: label for key, label in DELIVERY_METHOD_OPTIONS}
+
+ORDER_STATUS_OPTIONS = [
+    ("new", "Нове замовлення"),
+    ("processing", "В роботі"),
+    ("confirmed", "Підтверджено"),
+    ("shipped", "Відправлено"),
+    ("completed", "Завершено"),
+    ("cancelled", "Скасовано"),
+]
+ORDER_STATUS_LABELS = {key: label for key, label in ORDER_STATUS_OPTIONS}
+ORDER_STATUS_LABEL_TO_KEY = {label: key for key, label in ORDER_STATUS_OPTIONS}
+
+SUPPLIER_CHANNEL_OPTIONS = [
+    ("telegram", "Telegram"),
+    ("email", "Email"),
+    ("both", "Telegram + Email"),
 ]
 
 
@@ -126,6 +184,11 @@ class User(UserMixin, db.Model):
     full_name = db.Column(db.String(180), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     google_id = db.Column(db.String(255), unique=True, nullable=True)
+    email_verified = db.Column(db.Boolean, default=False)
+    email_verification_token = db.Column(db.String(255), nullable=True)
+    email_verification_sent_at = db.Column(db.DateTime, nullable=True)
+    reset_token = db.Column(db.String(255), nullable=True)
+    reset_token_expires_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     orders = db.relationship("Order", backref="user", lazy=True)
     reviews = db.relationship("ProductReview", backref="user", lazy=True)
@@ -160,12 +223,24 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     stock_status = db.Column(db.String(50), default="В наявності")
     supplier_chat_id = db.Column(db.String(120), nullable=True)
+    supplier_email = db.Column(db.String(180), nullable=True)
+    supplier_notification_channel = db.Column(db.String(20), default="telegram")
+    supplier_price = db.Column(db.Float, nullable=True)
+    available_delivery_methods = db.Column(db.Text, nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     images = db.relationship("ProductImage", backref="product", lazy=True, cascade="all, delete-orphan")
     order_items = db.relationship("OrderItem", backref="product", lazy=True)
     reviews = db.relationship("ProductReview", backref="product", lazy=True, cascade="all, delete-orphan")
+
+    def delivery_methods_list(self):
+        return parse_csv_list(self.available_delivery_methods)
+
+    def supplier_margin(self):
+        if self.supplier_price is None:
+            return None
+        return round((self.price or 0) - (self.supplier_price or 0), 2)
 
     @property
     def current_price(self):
@@ -191,6 +266,7 @@ class Order(db.Model):
     phone = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(180), nullable=True)
     city = db.Column(db.String(120), nullable=True)
+    region = db.Column(db.String(120), nullable=True)
     address = db.Column(db.String(255), nullable=True)
     delivery_method = db.Column(db.String(120), nullable=False)
     payment_method = db.Column(db.String(120), nullable=False)
@@ -214,6 +290,8 @@ class OrderItem(db.Model):
     price = db.Column(db.Float, nullable=False)
     quantity = db.Column(db.Integer, default=1)
     supplier_chat_id = db.Column(db.String(120), nullable=True)
+    supplier_email = db.Column(db.String(180), nullable=True)
+    supplier_price = db.Column(db.Float, nullable=True)
 
 
 class ProductReview(db.Model):
@@ -300,6 +378,8 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{INSTANCE_DIR / 'ampershop.db'}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+    app.config["PREFERRED_URL_SCHEME"] = os.getenv("PREFERRED_URL_SCHEME", "https")
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
     db.init_app(app)
     login_manager.init_app(app)
     oauth.init_app(app)
@@ -334,6 +414,8 @@ def create_app():
             "top_categories": Category.query.order_by(Category.name.asc()).all(),
             "current_year": datetime.utcnow().year,
             "phone_country_codes": COUNTRY_PHONE_CODES,
+            "delivery_method_labels": DELIVERY_METHOD_LABELS,
+            "delivery_method_options": DELIVERY_METHOD_OPTIONS,
             "cms": get_setting,
             "cms_lines": cms_lines,
             "cms_int": cms_int,
@@ -446,6 +528,9 @@ def create_app():
         pid = str(product_id)
         cart[pid] = cart.get(pid, 0) + 1
         session["cart"] = cart
+        if request.form.get("buy_now") == "1":
+            flash("Товар додано. Завершіть оформлення замовлення.", "success")
+            return redirect(url_for("checkout"))
         flash(f"{product.title} додано до кошика", "success")
         return redirect(request.referrer or url_for("catalog"))
 
@@ -530,16 +615,55 @@ def create_app():
             flash("Ваш кошик порожній", "warning")
             return redirect(url_for("catalog"))
 
+        available_delivery_methods = get_available_delivery_methods_for_items(items)
+        available_delivery_labels = [DELIVERY_METHOD_LABELS.get(code, code) for code in available_delivery_methods]
+
         if request.method == "POST":
             country_code = request.form.get("phone_country_code", "+380").strip()
             raw_phone = request.form.get("phone", "").strip()
             email = request.form.get("email", "").strip()
+            selected_delivery_method = request.form.get("delivery_method", "").strip()
+
+            if selected_delivery_method not in available_delivery_methods:
+                flash("Оберіть доступний спосіб доставки для товарів у кошику", "danger")
+                return render_template(
+                    "checkout.html",
+                    items=items,
+                    total=total,
+                    promo=promo,
+                    discount=discount,
+                    final_total=final_total,
+                    available_delivery_methods=available_delivery_methods,
+                    delivery_method_labels=DELIVERY_METHOD_LABELS,
+                    ukraine_regions=UKRAINE_REGIONS,
+                )
+
             if not validate_phone(raw_phone, country_code):
                 flash("Вкажіть коректний номер телефону", "danger")
-                return render_template("checkout.html", items=items, total=total, promo=promo, discount=discount, final_total=final_total)
+                return render_template(
+                    "checkout.html",
+                    items=items,
+                    total=total,
+                    promo=promo,
+                    discount=discount,
+                    final_total=final_total,
+                    available_delivery_methods=available_delivery_methods,
+                    delivery_method_labels=DELIVERY_METHOD_LABELS,
+                    ukraine_regions=UKRAINE_REGIONS,
+                )
             if email and not validate_email_address(email):
                 flash("Вкажіть коректний email", "danger")
-                return render_template("checkout.html", items=items, total=total, promo=promo, discount=discount, final_total=final_total)
+                return render_template(
+                    "checkout.html",
+                    items=items,
+                    total=total,
+                    promo=promo,
+                    discount=discount,
+                    final_total=final_total,
+                    available_delivery_methods=available_delivery_methods,
+                    delivery_method_labels=DELIVERY_METHOD_LABELS,
+                    ukraine_regions=UKRAINE_REGIONS,
+                )
 
             order = Order(
                 user_id=current_user.id if current_user.is_authenticated and not current_user.is_admin else None,
@@ -549,8 +673,9 @@ def create_app():
                 phone=format_phone(raw_phone, country_code),
                 email=email,
                 city=request.form.get("city", "").strip(),
+                region=request.form.get("region", "").strip(),
                 address=request.form.get("address", "").strip(),
-                delivery_method=request.form.get("delivery_method", "").strip(),
+                delivery_method=selected_delivery_method,
                 payment_method=request.form.get("payment_method", "").strip(),
                 carrier_service=request.form.get("carrier_service", "").strip(),
                 warehouse_number=request.form.get("warehouse_number", "").strip(),
@@ -571,18 +696,31 @@ def create_app():
                         price=item["product"].current_price,
                         quantity=item["quantity"],
                         supplier_chat_id=item["product"].supplier_chat_id,
+                        supplier_email=item["product"].supplier_email,
+                        supplier_price=item["product"].supplier_price,
                     )
                 )
             if promo:
                 promo.used_count = (promo.used_count or 0) + 1
             db.session.commit()
             notify_order(order)
+            send_order_confirmation_email(order)
             session["cart"] = {}
             session.pop("promo_code", None)
             flash("Замовлення успішно оформлене", "success")
             return redirect(url_for("thank_you", order_id=order.id))
 
-        return render_template("checkout.html", items=items, total=total, promo=promo, discount=discount, final_total=final_total)
+        return render_template(
+            "checkout.html",
+            items=items,
+            total=total,
+            promo=promo,
+            discount=discount,
+            final_total=final_total,
+            available_delivery_methods=available_delivery_methods,
+            delivery_method_labels=DELIVERY_METHOD_LABELS,
+            ukraine_regions=UKRAINE_REGIONS,
+        )
 
     @app.route("/thank-you/<int:order_id>")
     def thank_you(order_id):
@@ -638,6 +776,7 @@ def create_app():
         products = [Product.query.get(item.product_id) for item in items if Product.query.get(item.product_id)]
         return render_template("account/wishlist.html", products=products)
 
+
     @app.route("/account/register", methods=["GET", "POST"])
     def account_register():
         if current_user.is_authenticated and not current_user.is_admin:
@@ -653,12 +792,20 @@ def create_app():
             elif User.query.filter_by(email=email).first():
                 flash("Користувач з таким email вже існує", "warning")
             else:
-                user = User(email=email, full_name=full_name or email.split("@")[0], is_admin=False)
+                user = User(
+                    email=email,
+                    full_name=full_name or email.split("@")[0],
+                    is_admin=False,
+                    email_verified=False,
+                    email_verification_token=generate_token(),
+                    email_verification_sent_at=datetime.utcnow(),
+                )
                 user.set_password(password)
                 db.session.add(user)
                 db.session.commit()
+                send_verification_email(user)
                 login_user(user)
-                flash("Акаунт створено", "success")
+                flash("Акаунт створено. Ми надіслали лист для підтвердження email.", "success")
                 return redirect(url_for("account_dashboard"))
         return render_template("account/register.html")
 
@@ -672,43 +819,119 @@ def create_app():
             user = User.query.filter_by(email=email, is_admin=False).first()
             if user and user.check_password(password):
                 login_user(user)
-                flash("Ви увійшли в кабінет", "success")
+                if not user.email_verified:
+                    flash("Підтвердьте email, щоб користуватись усіма можливостями акаунта.", "warning")
+                else:
+                    flash("Ви увійшли в кабінет", "success")
                 return redirect(url_for("account_dashboard"))
             flash("Невірний email або пароль", "danger")
         return render_template("account/login.html")
 
+    @app.route("/account/verify/<token>")
+    def account_verify_email(token):
+        user = User.query.filter_by(email_verification_token=token).first_or_404()
+        user.email_verified = True
+        user.email_verification_token = None
+        db.session.commit()
+        login_user(user)
+        flash("Email успішно підтверджено.", "success")
+        return redirect(url_for("account_dashboard"))
+
+    @app.post("/account/resend-verification")
+    @login_required
+    def account_resend_verification():
+        if current_user.is_admin:
+            return redirect(url_for("admin_dashboard"))
+        if current_user.email_verified:
+            flash("Ваш email уже підтверджено.", "info")
+            return redirect(url_for("account_dashboard"))
+        current_user.email_verification_token = generate_token()
+        current_user.email_verification_sent_at = datetime.utcnow()
+        db.session.commit()
+        send_verification_email(current_user)
+        flash("Лист для підтвердження відправлено повторно.", "success")
+        return redirect(url_for("account_dashboard"))
+
+    @app.route("/account/forgot-password", methods=["GET", "POST"])
+    def account_forgot_password():
+        if request.method == "POST":
+            email = request.form.get("email", "").strip().lower()
+            user = User.query.filter_by(email=email, is_admin=False).first()
+            if user:
+                user.reset_token = generate_token()
+                user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=60)
+                db.session.commit()
+                send_password_reset_email(user)
+            flash("Якщо акаунт з таким email існує, ми надіслали інструкції для відновлення пароля.", "info")
+            return redirect(url_for("account_login"))
+        return render_template("account/forgot_password.html")
+
+    @app.route("/account/reset-password/<token>", methods=["GET", "POST"])
+    def account_reset_password(token):
+        user = User.query.filter_by(reset_token=token, is_admin=False).first()
+        if not user or not user.reset_token_expires_at or user.reset_token_expires_at < datetime.utcnow():
+            flash("Посилання для відновлення пароля недійсне або вже прострочене.", "danger")
+            return redirect(url_for("account_forgot_password"))
+        if request.method == "POST":
+            password = request.form.get("password", "")
+            password2 = request.form.get("password_confirm", "")
+            if len(password) < 6:
+                flash("Пароль має містити мінімум 6 символів", "danger")
+            elif password != password2:
+                flash("Паролі не співпадають", "danger")
+            else:
+                user.set_password(password)
+                user.reset_token = None
+                user.reset_token_expires_at = None
+                db.session.commit()
+                flash("Пароль оновлено. Тепер можна увійти.", "success")
+                return redirect(url_for("account_login"))
+        return render_template("account/reset_password.html", token=token)
+
     @app.route("/account/google")
     def account_google_login():
         if "google" not in oauth._registry:
-            flash("Google авторизація ще не налаштована. Додай GOOGLE_CLIENT_ID і GOOGLE_CLIENT_SECRET у .env", "warning")
+            flash("Google авторизація ще не налаштована. Додай GOOGLE_CLIENT_ID і GOOGLE_CLIENT_SECRET у .env або в адмінці", "warning")
             return redirect(url_for("account_login"))
-        redirect_uri = url_for("account_google_callback", _external=True)
+        redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+        if not redirect_uri:
+            redirect_uri = url_for("account_google_callback", _external=True, _scheme=app.config.get("PREFERRED_URL_SCHEME", "https"))
         return oauth.google.authorize_redirect(redirect_uri)
 
     @app.route("/account/google/callback")
     def account_google_callback():
         if "google" not in oauth._registry:
             return redirect(url_for("account_login"))
-        token = oauth.google.authorize_access_token()
-        userinfo = token.get("userinfo") or oauth.google.userinfo()
-        email = (userinfo.get("email") or "").lower()
-        google_id = userinfo.get("sub")
-        name = userinfo.get("name") or email
-        if not email:
-            flash("Google не повернув email", "danger")
+        try:
+            token = oauth.google.authorize_access_token()
+            userinfo = token.get("userinfo")
+            if not userinfo:
+                resp = oauth.google.get("https://openidconnect.googleapis.com/v1/userinfo", token=token)
+                userinfo = resp.json() if resp else {}
+            email = (userinfo.get("email") or "").strip().lower()
+            google_id = (userinfo.get("sub") or "").strip()
+            name = (userinfo.get("name") or email).strip()
+            if not email:
+                flash("Google не повернув email", "danger")
+                return redirect(url_for("account_login"))
+            user = User.query.filter((User.email == email) | (User.google_id == google_id)).first()
+            if not user:
+                user = User(email=email, full_name=name or email.split("@")[0], google_id=google_id or None, is_admin=False, email_verified=True)
+                db.session.add(user)
+            else:
+                if google_id and not user.google_id:
+                    user.google_id = google_id
+                if not user.full_name:
+                    user.full_name = name or email.split("@")[0]
+                user.email_verified = True
+            db.session.commit()
+            login_user(user)
+            flash("Вхід через Google виконано", "success")
+            return redirect(url_for("account_dashboard"))
+        except Exception as e:
+            app.logger.exception("Google OAuth callback error")
+            flash(f"Помилка входу через Google: {e}", "danger")
             return redirect(url_for("account_login"))
-        user = User.query.filter((User.email == email) | (User.google_id == google_id)).first()
-        if not user:
-            user = User(email=email, full_name=name, google_id=google_id, is_admin=False)
-            db.session.add(user)
-        else:
-            user.google_id = google_id
-            if not user.full_name:
-                user.full_name = name
-        db.session.commit()
-        login_user(user)
-        flash("Вхід через Google виконано", "success")
-        return redirect(url_for("account_dashboard"))
 
     @app.route("/account")
     @login_required
@@ -717,7 +940,7 @@ def create_app():
             return redirect(url_for("admin_dashboard"))
         orders = Order.query.filter_by(user_id=current_user.id).order_by(Order.created_at.desc()).all()
         wishlist_items = WishlistItem.query.filter_by(user_id=current_user.id).count()
-        return render_template("account/dashboard.html", orders=orders, wishlist_items=wishlist_items)
+        return render_template("account/dashboard.html", orders=orders, wishlist_items=wishlist_items, user=current_user)
 
     @app.route("/account/logout")
     @login_required
@@ -794,6 +1017,10 @@ def create_app():
                 is_active=bool(request.form.get("is_active")),
                 stock_status=request.form.get("stock_status", "В наявності").strip(),
                 supplier_chat_id=request.form.get("supplier_chat_id", "").strip(),
+                supplier_email=request.form.get("supplier_email", "").strip().lower(),
+                supplier_notification_channel=request.form.get("supplier_notification_channel", "telegram").strip(),
+                supplier_price=float(request.form.get("supplier_price", 0) or 0) if request.form.get("supplier_price") else None,
+                available_delivery_methods=",".join(request.form.getlist("available_delivery_methods")),
                 category_id=int(request.form.get("category_id")),
             )
             db.session.add(product)
@@ -802,7 +1029,13 @@ def create_app():
             db.session.commit()
             flash("Товар створено", "success")
             return redirect(url_for("admin_products"))
-        return render_template("admin/product_form.html", categories=categories, product=None)
+        return render_template(
+            "admin/product_form.html",
+            categories=categories,
+            product=None,
+            delivery_method_options=DELIVERY_METHOD_OPTIONS,
+            supplier_channel_options=SUPPLIER_CHANNEL_OPTIONS,
+        )
 
     @app.route("/admin/products/<int:product_id>/edit", methods=["GET", "POST"])
     @admin_required
@@ -822,6 +1055,10 @@ def create_app():
             product.is_active = bool(request.form.get("is_active"))
             product.stock_status = request.form.get("stock_status", "В наявності").strip()
             product.supplier_chat_id = request.form.get("supplier_chat_id", "").strip()
+            product.supplier_email = request.form.get("supplier_email", "").strip().lower()
+            product.supplier_notification_channel = request.form.get("supplier_notification_channel", "telegram").strip()
+            product.supplier_price = float(request.form.get("supplier_price", 0) or 0) if request.form.get("supplier_price") else None
+            product.available_delivery_methods = ",".join(request.form.getlist("available_delivery_methods"))
             product.category_id = int(request.form.get("category_id"))
             if request.form.getlist("delete_image"):
                 for image_id in request.form.getlist("delete_image"):
@@ -836,7 +1073,13 @@ def create_app():
             db.session.commit()
             flash("Товар оновлено", "success")
             return redirect(url_for("admin_products"))
-        return render_template("admin/product_form.html", categories=categories, product=product)
+        return render_template(
+            "admin/product_form.html",
+            categories=categories,
+            product=product,
+            delivery_method_options=DELIVERY_METHOD_OPTIONS,
+            supplier_channel_options=SUPPLIER_CHANNEL_OPTIONS,
+        )
 
     @app.post("/admin/products/<int:product_id>/delete")
     @admin_required
@@ -1017,21 +1260,23 @@ def create_app():
     def admin_settings():
         if request.method == "POST":
             for key in [
-                "telegram_bot_token", "telegram_owner_chat_id", "domain_name", "google_client_id", "google_client_secret",
-                "novaposhta_api_key", "meest_api_key", "meest_login", "meest_password", "meest_public_api_base"
+                "telegram_bot_token", "telegram_owner_chat_id", "telegram_webhook_secret", "domain_name", "google_client_id", "google_client_secret",
+                "novaposhta_api_key", "meest_api_key", "meest_login", "meest_password", "meest_public_api_base", "smtp_host", "smtp_port", "smtp_username", "smtp_password", "smtp_sender_email", "smtp_sender_name", "smtp_use_tls"
             ]:
                 set_setting(key, request.form.get(key, "").strip())
             db.session.commit()
             flash("Налаштування збережено", "success")
             return redirect(url_for("admin_settings"))
         settings = {key: get_setting(key, os.getenv(key.upper(), "")) for key in [
-            "telegram_bot_token", "telegram_owner_chat_id", "domain_name", "google_client_id", "google_client_secret",
-            "novaposhta_api_key", "meest_api_key", "meest_login", "meest_password", "meest_public_api_base"
+            "telegram_bot_token", "telegram_owner_chat_id", "telegram_webhook_secret", "domain_name", "google_client_id", "google_client_secret",
+            "novaposhta_api_key", "meest_api_key", "meest_login", "meest_password", "meest_public_api_base", "smtp_host", "smtp_port", "smtp_username", "smtp_password", "smtp_sender_email", "smtp_sender_name", "smtp_use_tls"
         ]}
         settings["domain_name"] = settings["domain_name"] or os.getenv("APP_DOMAIN", "localhost:5000")
         nginx_example = build_nginx_example(settings["domain_name"])
         logs = NotificationLog.query.order_by(NotificationLog.created_at.desc()).limit(15).all()
-        return render_template("admin/settings.html", settings=settings, nginx_example=nginx_example, logs=logs)
+        webhook_secret = settings.get("telegram_webhook_secret") or get_setting("telegram_webhook_secret", "")
+        webhook_url = build_absolute_url(f"/telegram/webhook/{webhook_secret}") if webhook_secret else ""
+        return render_template("admin/settings.html", settings=settings, nginx_example=nginx_example, logs=logs, webhook_url=webhook_url)
 
     @app.post("/admin/settings/test-telegram")
     @admin_required
@@ -1041,6 +1286,59 @@ def create_app():
         ok, text = send_telegram_message(owner_chat_id, "✅ Тестове повідомлення з AmperShop", token)
         flash("Telegram працює" if ok else f"Telegram не надіслав повідомлення: {text}", "success" if ok else "danger")
         return redirect(url_for("admin_settings"))
+
+    @app.post("/admin/settings/test-email")
+    @admin_required
+    def admin_test_email():
+        target = (current_user.email or "").strip().lower()
+        ok, message = send_email_message(
+            to_email=target,
+            subject="Тестовий email з AmperShop",
+            html=render_template(
+                "emails/generic_notice.html",
+                title="Тестовий лист",
+                preheader="Перевірка поштових налаштувань",
+                message_html="<p>Поштові налаштування AmperShop працюють коректно.</p>",
+                action_url=url_for("admin_dashboard", _external=True, _scheme=get_preferred_scheme()),
+                action_text="Відкрити адмінку",
+            ),
+            text="Поштові налаштування AmperShop працюють коректно.",
+        )
+        flash("Тестовий email відправлено" if ok else f"Email не відправлено: {message}", "success" if ok else "danger")
+        return redirect(url_for("admin_settings"))
+
+    @app.post("/telegram/webhook/<secret>")
+    def telegram_webhook(secret):
+        expected_secret = get_setting("telegram_webhook_secret", os.getenv("TELEGRAM_WEBHOOK_SECRET", ""))
+        if not expected_secret or secret != expected_secret:
+            return jsonify({"ok": False}), 403
+
+        payload = request.get_json(silent=True) or {}
+        callback = payload.get("callback_query")
+        token = get_setting("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", ""))
+        if callback:
+            data = (callback.get("data") or "").strip()
+            if data.startswith("ord|"):
+                parts = data.split("|", 2)
+                if len(parts) == 3:
+                    _, order_id_raw, status_key = parts
+                    order = Order.query.get(int(order_id_raw))
+                    if order and status_key in ORDER_STATUS_LABELS:
+                        order.status = ORDER_STATUS_LABELS[status_key]
+                        db.session.commit()
+                        if order.user_id or order.email:
+                            send_order_status_email(order)
+                        try:
+                            requests.post(
+                                f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                                json={"callback_query_id": callback.get("id"), "text": f"Статус: {order.status}"},
+                                timeout=10,
+                            )
+                        except requests.RequestException:
+                            pass
+            return jsonify({"ok": True})
+
+        return jsonify({"ok": True})
 
     @app.route("/admin/api/analytics-chart")
     @admin_required
@@ -1077,16 +1375,24 @@ def create_app():
     def shipping_cities_api():
         provider = request.args.get("provider", "np")
         q = request.args.get("q", "").strip()
+        region = request.args.get("region", "").strip()
+
         if len(q) < 2:
             return jsonify([])
-        return jsonify(fetch_shipping_cities(provider, q))
+
+        lookup_provider = provider
+        if normalize_provider_code(provider) in ["ukrposhta", "courier", "pickup", "samovyviz"]:
+            lookup_provider = "np"
+
+        return jsonify(fetch_shipping_cities(lookup_provider, q, region=region))
 
     @app.get("/api/shipping/branches")
     def shipping_branches_api():
         provider = request.args.get("provider", "np")
         city_ref = request.args.get("city_ref", "")
         q = request.args.get("q", "").strip()
-        return jsonify(fetch_shipping_branches(provider, city_ref, q))
+        city_label = request.args.get("city_label", "").strip()
+        return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
 
     return app
 
@@ -1096,12 +1402,30 @@ def ensure_columns():
     tables = {t: [c["name"] for c in inspector.get_columns(t)] for t in inspector.get_table_names()}
     statements = []
     if "user" in tables:
-        if "google_id" not in tables["user"]:
-            statements.append("ALTER TABLE user ADD COLUMN google_id VARCHAR(255)")
+        for column, ddl in {
+            "google_id": "VARCHAR(255)",
+            "email_verified": "BOOLEAN DEFAULT 0",
+            "email_verification_token": "VARCHAR(255)",
+            "email_verification_sent_at": "DATETIME",
+            "reset_token": "VARCHAR(255)",
+            "reset_token_expires_at": "DATETIME",
+        }.items():
+            if column not in tables["user"]:
+                statements.append(f"ALTER TABLE user ADD COLUMN {column} {ddl}")
+    if "product" in tables:
+        for column, ddl in {
+            "supplier_email": "VARCHAR(180)",
+            "supplier_notification_channel": "VARCHAR(20)",
+            "supplier_price": "FLOAT",
+            "available_delivery_methods": "TEXT",
+        }.items():
+            if column not in tables["product"]:
+                statements.append(f'ALTER TABLE product ADD COLUMN {column} {ddl}')
     if "order" in tables:
         for column, ddl in {
             "user_id": "INTEGER",
             "phone_country_code": "VARCHAR(10)",
+            "region": "VARCHAR(120)",
             "carrier_service": "VARCHAR(120)",
             "warehouse_number": "VARCHAR(120)",
             "promo_code": "VARCHAR(50)",
@@ -1109,6 +1433,13 @@ def ensure_columns():
         }.items():
             if column not in tables["order"]:
                 statements.append(f'ALTER TABLE "order" ADD COLUMN {column} {ddl}')
+    if "order_item" in tables:
+        for column, ddl in {
+            "supplier_email": "VARCHAR(180)",
+            "supplier_price": "FLOAT",
+        }.items():
+            if column not in tables["order_item"]:
+                statements.append(f'ALTER TABLE order_item ADD COLUMN {column} {ddl}')
     if "notification_log" not in tables:
         NotificationLog.__table__.create(db.engine)
     if "promo_code" not in tables:
@@ -1176,6 +1507,10 @@ def seed_defaults():
             is_active=True,
             stock_status="В наявності",
             supplier_chat_id="",
+            supplier_email="",
+            supplier_notification_channel="telegram",
+            supplier_price=1180,
+            available_delivery_methods="nova_poshta,meest,ukrposhta,courier",
             category_id=category.id,
         )
         db.session.add(product)
@@ -1183,6 +1518,7 @@ def seed_defaults():
     defaults = {
         "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
         "telegram_owner_chat_id": os.getenv("TELEGRAM_OWNER_CHAT_ID", ""),
+        "telegram_webhook_secret": os.getenv("TELEGRAM_WEBHOOK_SECRET", secrets.token_urlsafe(24)),
         "domain_name": os.getenv("APP_DOMAIN", "localhost:5000"),
         "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
         "google_client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
@@ -1256,6 +1592,146 @@ def set_setting(key, value):
         item.value = value
 
 
+def parse_csv_list(value):
+    if not value:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def get_available_delivery_methods_for_items(items):
+    methods_sets = []
+    for item in items:
+        product_methods = parse_csv_list(item["product"].available_delivery_methods)
+        if product_methods:
+            methods_sets.append(set(product_methods))
+    if not methods_sets:
+        return [code for code, _ in DELIVERY_METHOD_OPTIONS]
+    available = set.intersection(*methods_sets) if len(methods_sets) > 1 else methods_sets[0]
+    if not available:
+        available = set().union(*methods_sets)
+    ordered = [code for code, _ in DELIVERY_METHOD_OPTIONS if code in available]
+    return ordered or [code for code, _ in DELIVERY_METHOD_OPTIONS]
+
+
+def normalize_order_status(status_value):
+    raw = (status_value or "").strip()
+    if raw in ORDER_STATUS_LABEL_TO_KEY:
+        return ORDER_STATUS_LABEL_TO_KEY[raw], raw
+    if raw in ORDER_STATUS_LABELS:
+        return raw, ORDER_STATUS_LABELS[raw]
+    return "new", ORDER_STATUS_LABELS["new"]
+
+
+def order_status_badge(status_value):
+    slug, label = normalize_order_status(status_value)
+    icon_map = {
+        "new": "🆕",
+        "processing": "🛠",
+        "confirmed": "✅",
+        "shipped": "🚚",
+        "completed": "🏁",
+        "cancelled": "❌",
+    }
+    return icon_map.get(slug, "📦"), label
+
+def telegram_escape(value):
+    value = str(value or "")
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+def build_owner_order_message(order):
+    icon, status_label = order_status_badge(order.status)
+    item_lines = []
+    for item in order.items:
+        line = f"• <b>{telegram_escape(item.title)}</b> × {item.quantity} — <b>{item.price:.0f} грн</b>"
+        item_lines.append(line)
+    return (
+        f"🛍 <b>Нове замовлення #{order.id}</b>\n"
+        f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
+        f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
+        f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
+        f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
+        f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
+        f"🏠 <b>Адреса:</b> {telegram_escape(order.address or '-')}\n"
+        f"🚚 <b>Доставка:</b> {telegram_escape(DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method))}\n"
+        f"📦 <b>Сервіс:</b> {telegram_escape(order.carrier_service or '-')}\n"
+        f"🏣 <b>Відділення / індекс:</b> {telegram_escape(order.warehouse_number or '-')}\n"
+        f"💳 <b>Оплата:</b> {telegram_escape(order.payment_method)}\n"
+        f"📝 <b>Коментар:</b> {telegram_escape(order.comment or '-')}\n"
+        f"🏷 <b>Промокод:</b> {telegram_escape(order.promo_code or '-')}\n"
+        f"💸 <b>Знижка:</b> {order.discount_amount or 0:.0f} грн\n"
+        f"💰 <b>Сума:</b> {order.total_amount:.0f} грн\n\n"
+        f"<b>Товари:</b>\n" + "\n".join(item_lines)
+    )
+
+def build_supplier_order_message(order, supplier_items):
+    icon, status_label = order_status_badge(order.status)
+    lines = [supplier_line_text(item) for item in supplier_items]
+    return (
+        f"📦 <b>Замовлення #{order.id} на ваші товари</b>\n"
+        f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
+        f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
+        f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
+        f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
+        f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
+        f"🏠 <b>Адреса:</b> {telegram_escape(order.address or '-')}\n"
+        f"🚚 <b>Доставка:</b> {telegram_escape(DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method))}\n"
+        f"📦 <b>Сервіс:</b> {telegram_escape(order.carrier_service or '-')}\n"
+        f"🏣 <b>Відділення / індекс:</b> {telegram_escape(order.warehouse_number or '-')}\n"
+        f"💳 <b>Оплата:</b> {telegram_escape(order.payment_method)}\n"
+        f"📝 <b>Коментар:</b> {telegram_escape(order.comment or '-')}\n\n"
+        f"<b>Позиції:</b>\n" + "\n".join(lines)
+    )
+
+
+def build_status_keyboard(order_id):
+    rows = []
+    current_row = []
+    for slug, label in ORDER_STATUS_OPTIONS:
+        current_row.append({"text": label, "callback_data": f"ord|{order_id}|{slug}"})
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    return {"inline_keyboard": rows}
+
+
+def supplier_line_text(item):
+    supplier_price = (item.supplier_price or 0) * item.quantity if item.supplier_price is not None else None
+    retail_price = (item.price or 0) * item.quantity
+    margin = retail_price - supplier_price if supplier_price is not None else None
+    suffix = [f"<b>{item.title}</b> × {item.quantity}"]
+    details = []
+    if supplier_price is not None:
+        details.append(f"ціна постачальника: <b>{supplier_price:.0f} грн</b>")
+    details.append(f"ціна магазину: <b>{retail_price:.0f} грн</b>")
+    if margin is not None:
+        details.append(f"ваша виплата: <b>{margin:.0f} грн</b>")
+    return "• " + suffix[0] + "\n  " + " • ".join(details)
+
+
+def order_customer_snapshot(order):
+    return (
+        f"Замовлення #{order.id}\n"
+        f"Клієнт: {order.customer_name} {order.customer_surname}\n"
+        f"Телефон: {(order.phone_country_code or '').strip()} {order.phone}\n"
+        f"Email: {order.email or '-'}\n"
+        f"Місто: {order.city or '-'}\n"
+        f"Адреса: {order.address or '-'}\n"
+        f"Доставка: {DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method)}\n"
+        f"Сервіс: {order.carrier_service or '-'}\n"
+        f"Відділення/індекс: {order.warehouse_number or '-'}\n"
+        f"Оплата: {order.payment_method}\n"
+        f"Коментар: {order.comment or '-'}"
+    )
 
 
 def cms_lines(key, default=""):
@@ -1446,6 +1922,125 @@ def save_product_images(product, files):
         db.session.add(ProductImage(image_path=f"static/uploads/{unique_name}", product_id=product.id))
 
 
+
+
+def generate_token():
+    return secrets.token_urlsafe(32)
+
+
+def get_preferred_scheme():
+    return os.getenv("PREFERRED_URL_SCHEME") or "https"
+
+
+def bool_from_setting(value):
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def build_absolute_url(path):
+    domain = get_setting("domain_name", os.getenv("APP_DOMAIN", "localhost:5000")).strip().strip("/")
+    if domain.startswith("http://") or domain.startswith("https://"):
+        base = domain
+    else:
+        base = f"{get_preferred_scheme()}://{domain}"
+    return f"{base}{path if path.startswith('/') else '/' + path}"
+
+
+def get_mail_settings():
+    return {
+        "host": get_setting("smtp_host", os.getenv("SMTP_HOST", os.getenv("MAIL_SERVER", ""))),
+        "port": int(get_setting("smtp_port", os.getenv("SMTP_PORT", os.getenv("MAIL_PORT", "587"))) or 587),
+        "username": get_setting("smtp_username", os.getenv("SMTP_USERNAME", os.getenv("MAIL_USERNAME", ""))),
+        "password": get_setting("smtp_password", os.getenv("SMTP_PASSWORD", os.getenv("MAIL_PASSWORD", ""))),
+        "sender_email": get_setting("smtp_sender_email", os.getenv("SMTP_SENDER_EMAIL", os.getenv("MAIL_DEFAULT_SENDER", ""))),
+        "sender_name": get_setting("smtp_sender_name", os.getenv("SMTP_SENDER_NAME", "AmperShop")),
+        "use_tls": bool_from_setting(get_setting("smtp_use_tls", os.getenv("SMTP_USE_TLS", os.getenv("MAIL_USE_TLS", "1")))),
+    }
+
+
+def send_email_message(to_email, subject, html, text=""):
+    cfg = get_mail_settings()
+    if not cfg["host"] or not cfg["sender_email"] or not to_email:
+        return False, "SMTP не налаштований"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    sender = cfg["sender_email"]
+    if cfg["sender_name"]:
+        sender = f'{cfg["sender_name"]} <{cfg["sender_email"]}>'
+    msg["From"] = sender
+    msg["To"] = to_email
+    msg.set_content(text or "AmperShop")
+    msg.add_alternative(html, subtype="html")
+    try:
+        with smtplib.SMTP(cfg["host"], cfg["port"], timeout=20) as server:
+            if cfg["use_tls"]:
+                server.starttls()
+            if cfg["username"]:
+                server.login(cfg["username"], cfg["password"])
+            server.send_message(msg)
+        log_notification("email", to_email, True, subject, "sent")
+        return True, "sent"
+    except Exception as exc:
+        log_notification("email", to_email, False, subject, str(exc))
+        return False, str(exc)
+
+
+def send_verification_email(user):
+    if not user.email:
+        return False, "missing email"
+    if not user.email_verification_token:
+        user.email_verification_token = generate_token()
+        user.email_verification_sent_at = datetime.utcnow()
+        db.session.commit()
+    verify_url = build_absolute_url(f"/account/verify/{user.email_verification_token}")
+    html = render_template("emails/verify_email.html", user=user, verify_url=verify_url)
+    text = f"Підтвердіть email для AmperShop: {verify_url}"
+    return send_email_message(user.email, "Підтвердіть email у AmperShop", html, text)
+
+
+def send_password_reset_email(user):
+    if not user.email or not user.reset_token:
+        return False, "missing data"
+    reset_url = build_absolute_url(f"/account/reset-password/{user.reset_token}")
+    html = render_template("emails/reset_password.html", user=user, reset_url=reset_url)
+    text = f"Відновлення пароля AmperShop: {reset_url}"
+    return send_email_message(user.email, "Відновлення пароля AmperShop", html, text)
+
+
+def send_order_confirmation_email(order):
+    if not order.email:
+        return False, "no email"
+    html = render_template("emails/order_confirmation.html", order=order, delivery_method_label=DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method))
+    text_lines = [
+        f"Дякуємо за замовлення #{order.id}",
+        f"Сума: {order.total_amount:.0f} грн",
+        "Склад замовлення:",
+    ] + [f"- {item.title} × {item.quantity} — {item.price:.0f} грн" for item in order.items]
+    return send_email_message(order.email, f"Ваше замовлення #{order.id} — AmperShop", html, "\n".join(text_lines))
+
+
+def send_supplier_order_email(order, target_email, items):
+    if not target_email:
+        return False, "no email"
+    html = render_template("emails/supplier_order.html", order=order, items=items, delivery_method_label=DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method))
+    text_lines = [
+        f"Нове замовлення #{order.id}",
+        f"Клієнт: {order.customer_name} {order.customer_surname}",
+        f"Телефон: {(order.phone_country_code or '').strip()} {order.phone}",
+        "Позиції:",
+    ] + [supplier_line_text(item) for item in items]
+    return send_email_message(target_email, f"Нове замовлення #{order.id} — AmperShop", html, "\n".join(text_lines))
+
+
+def send_order_status_email(order):
+    if not order.email:
+        return False, "no email"
+    html = render_template("emails/order_status_update.html", order=order, status_label=order.status)
+    text = f"Статус вашого замовлення #{order.id} оновлено: {order.status}"
+    return send_email_message(order.email, f"Статус замовлення #{order.id}: {order.status}", html, text)
+
+
 def validate_email_address(email):
     try:
         validate_email(email, check_deliverability=False)
@@ -1490,22 +2085,39 @@ def log_notification(channel, target, success, message, response_text=""):
     db.session.commit()
 
 
-def send_telegram_message(chat_id, message, token):
+def send_telegram_message(chat_id, message, token, reply_markup=None):
     if not token:
+        log_notification("telegram", str(chat_id or ""), False, message, "Не заданий токен Telegram бота")
         return False, "Не заданий токен Telegram бота"
     if not chat_id:
+        log_notification("telegram", str(chat_id or ""), False, message, "Не заданий chat_id")
         return False, "Не заданий chat_id"
+
+    payload = {
+        "chat_id": str(chat_id).strip(),
+        "text": message,
+        "disable_web_page_preview": True,
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
     try:
         response = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": str(chat_id).strip(), "text": message},
-            timeout=15,
+            json=payload,
+            timeout=20,
         )
-        ok = response.ok and response.json().get("ok", False)
-        response_text = response.text
+        try:
+            data = response.json()
+        except ValueError:
+            data = {"ok": False, "raw": response.text}
+
+        ok = bool(response.ok and data.get("ok"))
+        response_text = json.dumps(data, ensure_ascii=False)
         log_notification("telegram", str(chat_id), ok, message, response_text)
+
         if ok:
-            return True, "ok"
+            return True, data
         return False, response_text
     except requests.RequestException as exc:
         log_notification("telegram", str(chat_id), False, message, str(exc))
@@ -1515,47 +2127,19 @@ def send_telegram_message(chat_id, message, token):
 def notify_order(order):
     token = get_setting("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", ""))
     owner_chat_id = get_setting("telegram_owner_chat_id", os.getenv("TELEGRAM_OWNER_CHAT_ID", ""))
-    item_lines = [f"• {item.title} × {item.quantity} — {item.price:.0f} грн" for item in order.items]
-    common = (
-        f"Нове замовлення #{order.id}\n"
-        f"Клієнт: {order.customer_name} {order.customer_surname}\n"
-        f"Телефон: {order.phone_country_code or ''} {order.phone}\n"
-        f"Email: {order.email or '-'}\n"
-        f"Місто: {order.city or '-'}\n"
-        f"Адреса: {order.address or '-'}\n"
-        f"Доставка: {order.delivery_method}\n"
-        f"Сервіс: {order.carrier_service or '-'}\n"
-        f"Відділення/індекс: {order.warehouse_number or '-'}\n"
-        f"Оплата: {order.payment_method}\n"
-        f"Коментар: {order.comment or '-'}\n"
-        f"Промокод: {order.promo_code or '-'}\nЗнижка: {(order.discount_amount or 0):.0f} грн\nСума: {order.total_amount:.0f} грн\n\n"
-        f"Товари:\n" + "\n".join(item_lines)
-    )
-    send_telegram_message(owner_chat_id, common, token)
+    common = build_owner_order_message(order)
+    keyboard = build_status_keyboard(order.id)
+
+    send_telegram_message(owner_chat_id, common, token, reply_markup=keyboard)
+
     grouped = defaultdict(list)
     for item in order.items:
         if item.supplier_chat_id:
             grouped[item.supplier_chat_id].append(item)
+
     for supplier_chat_id, supplier_items in grouped.items():
-        item_lines = [f"• {item.title} × {item.quantity} — {item.price:.0f} грн" for item in supplier_items]
-        supplier_message = (
-            f"Нове замовлення на ваші товари\n"
-            f"Замовлення #{order.id}\n"
-            f"Клієнт: {order.customer_name} {order.customer_surname}\n"
-            f"Телефон: {order.phone_country_code or ''} {order.phone}\n"
-            f"Email: {order.email or '-'}\n"
-            f"Місто: {order.city or '-'}\n"
-            f"Адреса: {order.address or '-'}\n"
-            f"Доставка: {order.delivery_method}\n"
-            f"Сервіс: {order.carrier_service or '-'}\n"
-            f"Відділення/індекс: {order.warehouse_number or '-'}\n"
-            f"Оплата: {order.payment_method}\n"
-            f"Коментар: {order.comment or '-'}\n\n"
-            f"Позиції:\n' + '\n".join(item_lines)
-        )
-        send_telegram_message(supplier_chat_id, supplier_message, token)
-
-
+        supplier_message = build_supplier_order_message(order, supplier_items)
+        send_telegram_message(supplier_chat_id, supplier_message, token, reply_markup=keyboard)
 
 def nova_poshta_request(model_name, called_method, properties=None):
     api_key = get_setting("novaposhta_api_key", os.getenv("NOVAPOSHTA_API_KEY", ""))
@@ -1575,28 +2159,146 @@ def nova_poshta_request(model_name, called_method, properties=None):
         return []
 
 
-def fetch_shipping_cities(provider, query):
-    provider = (provider or "np").lower()
+def normalize_provider_code(provider):
+    provider = (provider or "").strip().lower()
+    aliases = {
+        "nova_poshta": "np",
+        "novaposhta": "np",
+        "np": "np",
+        "meest": "meest",
+        "ukrposhta": "ukrposhta",
+        "ukr_post": "ukrposhta",
+        "courier": "courier",
+    }
+    return aliases.get(provider, provider or "np")
+
+
+
+
+def normalize_region_name(value):
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .replace("область", "")
+        .replace("обл.", "")
+        .replace("обл", "")
+        .replace("’", "'")
+        .replace("`", "'")
+        .strip()
+    )
+
+def fetch_shipping_cities(provider, query, region=""):
+    provider = normalize_provider_code(provider)
+    query = (query or "").strip()
+    region_norm = normalize_region_name(region)
     results = []
+
+    def region_matches(area_value, label_value=""):
+        if not region_norm:
+            return True
+        area_norm = normalize_region_name(area_value)
+        label_norm = normalize_region_name(label_value)
+        return region_norm in area_norm or region_norm in label_norm
+
     if provider == "np":
-        data = nova_poshta_request("Address", "searchSettlements", {"CityName": query, "Limit": 15})
+        data = nova_poshta_request("Address", "searchSettlements", {
+            "CityName": query,
+            "Limit": 20,
+        })
         for item in data:
             for addr in item.get("Addresses", []):
-                results.append({
-                    "ref": addr.get("Ref") or addr.get("DeliveryCity"),
-                    "label": addr.get("Present") or addr.get("MainDescription") or addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", ""),
-                })
+                area = (
+                    addr.get("AreaDescription")
+                    or addr.get("Area")
+                    or addr.get("Region")
+                    or ""
+                )
+                label = (
+                    addr.get("Present")
+                    or addr.get("MainDescription")
+                    or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
+                )
+                entry = {
+                    "ref": addr.get("Ref") or addr.get("DeliveryCity") or label,
+                    "label": label,
+                    "region": area,
+                }
+                if region_matches(area, label):
+                    results.append(entry)
+
         if not results:
-            data = nova_poshta_request("Address", "getCities", {"FindByString": query, "Limit": 15})
+            data = nova_poshta_request("Address", "getCities", {
+                "FindByString": query,
+                "Limit": 20,
+            })
             for item in data:
-                results.append({"ref": item.get("Ref"), "label": item.get("Description")})
+                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+                label = item.get("Description") or item.get("Present") or ""
+                entry = {
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                }
+                if region_matches(area, label):
+                    results.append(entry)
+
+        # fallback without region filter if region was too strict
+        if not results and region_norm:
+            data = nova_poshta_request("Address", "getCities", {
+                "FindByString": query,
+                "Limit": 20,
+            })
+            for item in data:
+                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+                label = item.get("Description") or item.get("Present") or ""
+                results.append({
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                })
+
     elif provider == "meest":
-        results = meest_public_lookup("cities", query)
-    return results[:15]
+        results = meest_public_lookup("cities", query, region=region_norm)
+
+    else:
+        data = nova_poshta_request("Address", "getCities", {
+            "FindByString": query,
+            "Limit": 20,
+        })
+        for item in data:
+            area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+            label = item.get("Description") or item.get("Present") or ""
+            entry = {
+                "ref": item.get("Ref") or label,
+                "label": label,
+                "region": area,
+            }
+            if region_matches(area, label):
+                results.append(entry)
+        if not results and region_norm:
+            for item in data:
+                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+                label = item.get("Description") or item.get("Present") or ""
+                results.append({
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                })
+
+    seen = set()
+    unique = []
+    for item in results:
+        key = (item.get("ref"), item.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique[:20]
 
 
-def fetch_shipping_branches(provider, city_ref, query=""):
-    provider = (provider or "np").lower()
+def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
+    provider = normalize_provider_code(provider)
     results = []
     if provider == "np":
         props = {"Limit": 50}
@@ -1609,13 +2311,18 @@ def fetch_shipping_branches(provider, city_ref, query=""):
             data = nova_poshta_request("Address", "getWarehouses", props)
         for item in data:
             label = item.get("Description") or item.get("ShortAddress") or item.get("SiteKey")
-            results.append({"ref": item.get("Ref") or item.get("SiteKey"), "label": label})
+            results.append({"ref": item.get("Ref") or item.get("SiteKey") or label, "label": label})
     elif provider == "meest":
         results = meest_public_lookup("branches", query, city_ref=city_ref)
+    elif provider == "ukrposhta":
+        # MVP fallback: let the user choose a service type and type in an index/branch if no API is configured.
+        results = []
+    else:
+        results = []
     return results[:50]
 
 
-def meest_public_lookup(kind, query, city_ref=""):
+def meest_public_lookup(kind, query, city_ref="", region=""):
     base = get_setting("meest_public_api_base", os.getenv("MEEST_PUBLIC_API_BASE", "https://publicapi.meest.com")).rstrip("/")
     candidates = []
     if kind == "cities":

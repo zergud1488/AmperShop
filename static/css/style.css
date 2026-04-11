@@ -233,3 +233,45 @@ html{scroll-behavior:smooth}
   .glass-nav{padding-top:.35rem!important;padding-bottom:.35rem!important}
   .review-card,.review-form-card{padding:18px;border-radius:22px}
 }
+
+
+/* Email + mobile checkout patch */
+.product-actions-grid{display:grid;gap:.65rem}
+.mobile-cart-dock{position:fixed;left:10px;right:10px;bottom:10px;z-index:1038;display:flex;gap:10px;padding:10px;border:1px solid rgba(0,0,0,.08);border-radius:22px;background:rgba(255,255,255,.94);backdrop-filter:blur(16px);box-shadow:0 16px 40px rgba(0,0,0,.12)}
+.mobile-cart-link{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:.9rem 1rem;border-radius:999px;text-decoration:none;font-weight:800;color:#111;background:#f4f4f6;border:1px solid #e7e7ec}
+.mobile-cart-link--cart{background:#0a0a0a;color:#fff}
+.mobile-cart-link--cart .badge{background:#fff!important;color:#111!important}
+@media (max-width: 991px){
+  body{padding-bottom:86px}
+  .site-header .btn.btn-electric{width:100%;margin-top:.5rem}
+  .navbar-collapse{padding-bottom:.65rem}
+}
+@media (min-width: 992px){
+  .mobile-cart-dock{display:none}
+}
+@media (max-width: 767px){
+  .product-actions-grid{grid-template-columns:1fr}
+  .product-summary-card .btn-lg{width:100%}
+  .product-summary-card .d-grid.d-sm-flex{display:grid!important}
+  .sticky-buy-bar{padding:10px 12px}
+  .sticky-buy-bar .small{font-size:.72rem}
+}
+
+
+/* Supplier + Gmail + delivery update pack */
+.delivery-check{display:flex;align-items:center;gap:10px;padding:14px 16px;border:1px solid #e7e7ec;border-radius:18px;background:#fff;font-weight:700;cursor:pointer}
+.delivery-check input{width:18px;height:18px}
+.delivery-options-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.btn-google{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#fff;border:1px solid #dfe1e5;color:#111;font-weight:800}
+.btn-google:hover{background:#f8f9fa;border-color:#d2d6db;color:#111}
+.order-status-pill{display:inline-flex;align-items:center;justify-content:center;padding:.55rem .9rem;border-radius:999px;background:#111;color:#fff;font-size:.88rem;font-weight:800}
+.account-order-card{background:linear-gradient(180deg,#fff,#fbfbfc)}
+@media (max-width: 991px){
+  .mobile-cart-dock{grid-template-columns:repeat(3,1fr);display:grid}
+  body{padding-bottom:102px}
+}
+@media (max-width: 767px){
+  .delivery-options-grid{grid-template-columns:1fr}
+  .mobile-cart-dock{left:8px;right:8px;bottom:8px;padding:8px;gap:8px}
+  .mobile-cart-link{padding:.78rem .75rem;font-size:.9rem}
+}

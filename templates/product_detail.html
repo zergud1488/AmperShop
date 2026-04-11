@@ -61,6 +61,10 @@
             <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
               <button class="btn btn-electric btn-lg px-5">Додати у кошик</button>
             </form>
+            <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+              <input type="hidden" name="buy_now" value="1">
+              <button class="btn btn-dark rounded-pill btn-lg px-4">Купити зараз</button>
+            </form>
             {% if current_user.is_authenticated and not current_user.is_admin %}
             <form method="post" action="{{ url_for('wishlist_add', product_id=product.id) }}">
               <button class="btn btn-outline-dark rounded-pill btn-lg px-4">В обране</button>
@@ -142,8 +146,14 @@
     <div class="small text-secondary">{{ product.title }}</div>
     <div class="fw-bold">{{ '%.0f'|format(product.price) }} грн</div>
   </div>
-  <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
-    <button class="btn btn-electric">Купити</button>
-  </form>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+      <button class="btn btn-electric">У кошик</button>
+    </form>
+    <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+      <input type="hidden" name="buy_now" value="1">
+      <button class="btn btn-dark rounded-pill">Купити зараз</button>
+    </form>
+  </div>
 </div>
 {% endblock %}

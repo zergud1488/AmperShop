@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block content %}
-<div class="mb-4"><div class="eyebrow">Налаштування</div><h1 class="fw-bold mb-0">Telegram, домен, Google, доставки</h1></div>
+<div class="mb-4"><div class="eyebrow">Налаштування</div><h1 class="fw-bold mb-0">Telegram, Gmail SMTP, Google, доставки</h1></div>
 <div class="row g-4">
   <div class="col-lg-7">
     <div class="card border-0 shadow-sm rounded-4">
@@ -11,6 +11,9 @@
           <input class="form-control mb-3" name="telegram_bot_token" value="{{ settings.telegram_bot_token }}">
           <label class="form-label">Ваш Chat ID для сповіщень</label>
           <input class="form-control mb-3" name="telegram_owner_chat_id" value="{{ settings.telegram_owner_chat_id }}">
+          <label class="form-label">Webhook secret</label>
+          <input class="form-control mb-2" name="telegram_webhook_secret" value="{{ settings.telegram_webhook_secret }}">
+          <div class="form-text mb-3">Після збереження вкажи цей URL як webhook бота: <code>{{ webhook_url }}</code></div>
 
           <h4 class="fw-bold mt-4 mb-3">Google авторизація</h4>
           <label class="form-label">Google Client ID</label>
@@ -30,33 +33,63 @@
           <label class="form-label">Meest public API base</label>
           <input class="form-control mb-3" name="meest_public_api_base" value="{{ settings.meest_public_api_base }}">
 
+          <h4 class="fw-bold mt-4 mb-3">SMTP / Email</h4>
+          <div class="alert alert-light border rounded-4 small">
+            Для Gmail заповни так: <strong>smtp.gmail.com</strong>, порт <strong>587</strong>, TLS <strong>увімкнено</strong>.
+            У логін та email відправника вкажи свою Gmail-адресу, у пароль — app password.
+          </div>
+          <label class="form-label">SMTP host</label>
+          <input class="form-control mb-3" name="smtp_host" value="{{ settings.smtp_host or 'smtp.gmail.com' }}">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">SMTP port</label>
+              <input class="form-control mb-3" name="smtp_port" value="{{ settings.smtp_port or '587' }}">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">SMTP username</label>
+              <input class="form-control mb-3" name="smtp_username" value="{{ settings.smtp_username }}">
+            </div>
+          </div>
+          <label class="form-label">SMTP password</label>
+          <input class="form-control mb-3" name="smtp_password" value="{{ settings.smtp_password }}">
+          <label class="form-label">Email відправника</label>
+          <input class="form-control mb-3" name="smtp_sender_email" value="{{ settings.smtp_sender_email }}">
+          <label class="form-label">Ім'я відправника</label>
+          <input class="form-control mb-3" name="smtp_sender_name" value="{{ settings.smtp_sender_name or 'AmperShop' }}">
+          <label class="form-label">TLS</label>
+          <select class="form-select mb-3" name="smtp_use_tls">
+            <option value="1" {% if settings.smtp_use_tls in ['1', 1, True, 'true', 'True', '', None] %}selected{% endif %}>Увімкнено</option>
+            <option value="0" {% if settings.smtp_use_tls in ['0', 0, False, 'false', 'False'] %}selected{% endif %}>Вимкнено</option>
+          </select>
+
           <h4 class="fw-bold mt-4 mb-3">Домен</h4>
           <label class="form-label">Доменне ім'я сайту</label>
           <input class="form-control mb-3" name="domain_name" value="{{ settings.domain_name }}">
-          <div class="d-flex gap-2 flex-wrap">
-            <button class="btn btn-electric">Зберегти налаштування</button>
-          </div>
+          <button class="btn btn-electric">Зберегти налаштування</button>
         </form>
-        <form method="post" action="{{ url_for('admin_test_telegram') }}" class="mt-3">
-          <button class="btn btn-outline-dark rounded-pill">Надіслати тест у Telegram</button>
-        </form>
+        <div class="d-flex gap-2 flex-wrap mt-3">
+          <form method="post" action="{{ url_for('admin_test_telegram') }}">
+            <button class="btn btn-outline-dark rounded-pill">Надіслати тест у Telegram</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_test_email') }}">
+            <button class="btn btn-outline-dark rounded-pill">Надіслати тестовий email</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>
   <div class="col-lg-5">
     <div class="card border-0 shadow-sm rounded-4 mb-4">
       <div class="card-body p-4">
-        <h4 class="fw-bold mb-3">V3 підключення доставок</h4>
-        <ul class="small text-secondary ps-3 mb-0">
-          <li>Нова Пошта використовує офіційну JSON точку входу через API key.</li>
-          <li>Meest у MVP підключений через довідники/адаптер публічних або контрактних endpoint'ів.</li>
-          <li>Якщо API тимчасово недоступне, checkout лишається в ручному режимі.</li>
-        </ul>
+        <h4 class="fw-bold mb-3">Telegram webhook</h4>
+        <div class="small text-secondary mb-2">Після збереження налаштувань встанови webhook для бота:</div>
+        <pre class="spec-pre">https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url={{ webhook_url }}</pre>
+        <div class="small text-secondary">Після цього кнопки в повідомленнях Telegram зможуть змінювати статус замовлення.</div>
       </div>
     </div>
     <div class="card border-0 shadow-sm rounded-4 mb-4">
       <div class="card-body p-4">
-        <h4 class="fw-bold mb-3">Останні логи Telegram</h4>
+        <h4 class="fw-bold mb-3">Останні логи сповіщень</h4>
         {% for log in logs %}
         <div class="border-bottom py-2">
           <div class="d-flex justify-content-between gap-3"><strong>{{ log.target or '-' }}</strong><span class="badge {% if log.success %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ 'OK' if log.success else 'ERROR' }}</span></div>

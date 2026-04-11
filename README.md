@@ -102,3 +102,33 @@ SQLite автоматично мігрується при старті для н
 - `supplier_chat_id`
 
 Існуючі товари оновлюються за `slug` або `title`, нові — додаються автоматично.
+
+
+## Email-функції в цій збірці
+Додано:
+- підтвердження email при реєстрації;
+- відновлення пароля через email;
+- красивий email-підтвердження замовлення;
+- SMTP налаштування в адмінці: `/admin/settings`.
+
+Рекомендовані SMTP-поля:
+- smtp_host
+- smtp_port
+- smtp_username
+- smtp_password
+- smtp_sender_email
+- smtp_sender_name
+- smtp_use_tls
+
+Також можна задати через `.env`:
+- SMTP_HOST
+- SMTP_PORT
+- SMTP_USERNAME
+- SMTP_PASSWORD
+- SMTP_SENDER_EMAIL
+- SMTP_SENDER_NAME
+- SMTP_USE_TLS
+- GOOGLE_REDIRECT_URI
+- PREFERRED_URL_SCHEME=https
+
+Після першого запуску застосунок сам додасть нові колонки в SQLite.

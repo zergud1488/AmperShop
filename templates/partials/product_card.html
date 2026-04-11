@@ -31,9 +31,15 @@
       </div>
     </a>
     <div class="px-3 px-lg-4 pb-4 mt-auto d-grid gap-2">
-      <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
-        <button class="btn btn-electric w-100">Додати у кошик</button>
-      </form>
+      <div class="d-grid gap-2 product-actions-grid">
+        <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+          <button class="btn btn-electric w-100">Додати у кошик</button>
+        </form>
+        <form method="post" action="{{ url_for('cart_add', product_id=product.id) }}">
+          <input type="hidden" name="buy_now" value="1">
+          <button class="btn btn-dark rounded-pill w-100">Купити зараз</button>
+        </form>
+      </div>
       {% if current_user.is_authenticated and not current_user.is_admin %}
       <form method="post" action="{{ url_for('wishlist_add', product_id=product.id) }}">
         <button class="btn btn-outline-dark rounded-pill w-100">Додати в обране</button>
