@@ -2023,8 +2023,12 @@ def send_order_confirmation_email(order):
         f"Сума: {order.total_amount:.0f} грн",
         "Склад замовлення:",
     ] + [f"- {item.title} × {item.quantity} — {item.price:.0f} грн" for item in order.items]
-    return send_email_message(order.email, f"Ваше замовлення #{order.id} — AmperShop", html, "
-".join(text_lines))
+    return send_email_message(
+        order.email,
+        f"Ваше замовлення #{order.id} — AmperShop",
+        html,
+        ""
+    )
 
 
 def send_supplier_order_email(order, target_email, items):
