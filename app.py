@@ -675,25 +675,8 @@ def create_app():
             if promo:
                 promo.used_count = (promo.used_count or 0) + 1
             db.session.commit()
-
-            try:
-                notify_order(order)
-            except Exception as exc:
-                app.logger.exception("Notify order failed")
-                try:
-                    log_notification("system", "notify_order", False, f"Order #{order.id}", str(exc))
-                except Exception:
-                    pass
-
-            try:
-                send_order_confirmation_email(order)
-            except Exception as exc:
-                app.logger.exception("Order confirmation email failed")
-                try:
-                    log_notification("system", "order_confirmation_email", False, f"Order #{order.id}", str(exc))
-                except Exception:
-                    pass
-
+            notify_order(order)
+            send_order_confirmation_email(order)
             session["cart"] = {}
             session.pop("promo_code", None)
             flash("Замовлення успішно оформлене", "success")
@@ -2000,35 +1983,13 @@ def send_password_reset_email(user):
 def send_order_confirmation_email(order):
     if not order.email:
         return False, "no email"
-    try:
-        html = render_template(
-            "emails/order_confirmation.html",
-            order=order,
-            delivery_method_label=DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method),
-        )
-    except Exception:
-        html = f"""
-        <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;background:#ffffff;color:#111">
-          <h2 style="margin:0 0 16px">Дякуємо за замовлення #{order.id}</h2>
-          <p style="margin:0 0 12px">Сума: <b>{order.total_amount:.0f} грн</b></p>
-          <p style="margin:0 0 8px">Доставка: {DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method)}</p>
-          <p style="margin:0 0 16px">Оплата: {order.payment_method}</p>
-          <div style="padding:16px;border:1px solid #e5e7eb;border-radius:12px">
-            {''.join([f"<div style='margin:0 0 8px'>• {item.title} × {item.quantity} — <b>{item.price:.0f} грн</b></div>" for item in order.items])}
-          </div>
-        </div>
-        """
+    html = render_template("emails/order_confirmation.html", order=order, delivery_method_label=DELIVERY_METHOD_LABELS.get(order.delivery_method, order.delivery_method))
     text_lines = [
         f"Дякуємо за замовлення #{order.id}",
         f"Сума: {order.total_amount:.0f} грн",
         "Склад замовлення:",
     ] + [f"- {item.title} × {item.quantity} — {item.price:.0f} грн" for item in order.items]
-    return send_email_message(
-        order.email,
-        f"Ваше замовлення #{order.id} — AmperShop",
-        html,
-        ""
-    )
+    return send_email_message(order.email, f"Ваше замовлення #{order.id} — AmperShop", html, "\n".join(text_lines))
 
 
 def send_supplier_order_email(order, target_email, items):
@@ -2229,36 +2190,64 @@ def fetch_shipping_cities(provider, query, region=""):
 
     if provider == "np":
         area_ref = get_np_area_ref(region)
-        city_payload = {"Limit": 500}
-        if area_ref:
-            city_payload["AreaRef"] = area_ref
-        if query:
-            city_payload["FindByString"] = query
-        data = nova_poshta_request("Address", "getCities", city_payload)
 
-        if not data and query:
-            data = nova_poshta_request("Address", "searchSettlements", {"CityName": query, "Limit": 20})
+        # 1) Якщо користувач друкує місто — спочатку беремо searchSettlements.
+        if query:
+            search_payload = {"CityName": query, "Limit": 50}
+            if area_ref:
+                search_payload["AreaRef"] = area_ref
+            data = nova_poshta_request("Address", "searchSettlements", search_payload)
             for item in data:
                 for addr in item.get("Addresses", []):
                     area = addr.get("AreaDescription") or addr.get("Area") or addr.get("Region") or ""
-                    label = addr.get("Present") or addr.get("MainDescription") or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
-                    entry = {"ref": addr.get("Ref") or addr.get("DeliveryCity") or label, "label": label, "region": area}
+                    label = (
+                        addr.get("Present")
+                        or addr.get("MainDescription")
+                        or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
+                    )
+                    entry = {
+                        "ref": addr.get("DeliveryCity") or addr.get("Ref") or label,
+                        "label": label,
+                        "region": area,
+                    }
                     if region_matches(area, label):
                         results.append(entry)
-        else:
+
+        # 2) Якщо по search нічого не знайдено — беремо список міст по області.
+        if not results:
+            city_payload = {"Limit": 500}
+            if area_ref:
+                city_payload["AreaRef"] = area_ref
+            if query:
+                city_payload["FindByString"] = query
+            data = nova_poshta_request("Address", "getCities", city_payload)
             for item in data:
                 area = item.get("AreaDescription") or item.get("RegionDescription") or ""
                 label = item.get("Description") or item.get("Present") or ""
-                entry = {"ref": item.get("Ref") or label, "label": label, "region": area}
+                entry = {
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                }
                 if region_matches(area, label):
                     results.append(entry)
 
+        # 3) Якщо область відсікла все зайве — пробуємо ще раз без жорсткого фільтра.
         if not results and query:
-            data = nova_poshta_request("Address", "getCities", {"FindByString": query, "Limit": 50})
+            data = nova_poshta_request("Address", "searchSettlements", {"CityName": query, "Limit": 50})
             for item in data:
-                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
-                label = item.get("Description") or item.get("Present") or ""
-                results.append({"ref": item.get("Ref") or label, "label": label, "region": area})
+                for addr in item.get("Addresses", []):
+                    area = addr.get("AreaDescription") or addr.get("Area") or addr.get("Region") or ""
+                    label = (
+                        addr.get("Present")
+                        or addr.get("MainDescription")
+                        or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
+                    )
+                    results.append({
+                        "ref": addr.get("DeliveryCity") or addr.get("Ref") or label,
+                        "label": label,
+                        "region": area,
+                    })
 
     elif provider == "meest":
         results = meest_public_lookup("cities", query or region, region=region_norm)
@@ -2287,27 +2276,58 @@ def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
     provider = normalize_provider_code(provider)
     results = []
     query = (query or "").strip()
+
     if provider == "np":
         props = {"Limit": 200}
         if city_ref:
             props["CityRef"] = city_ref
         if query:
             props["FindByString"] = query
+
         data = nova_poshta_request("AddressGeneral", "getWarehouses", props)
         if not data:
             data = nova_poshta_request("Address", "getWarehouses", props)
+
         for item in data:
             number = item.get("Number") or item.get("SiteKey") or ""
             label = item.get("Description") or item.get("ShortAddress") or number
             pretty = f"№{number} — {label}" if number and not str(label).startswith("№") else label
             results.append({"ref": item.get("Ref") or number or label, "label": pretty})
+
+        # fallback by city label if city_ref missing or warehouses empty
+        if not results and city_label:
+            city_matches = fetch_shipping_cities("np", city_label, "")
+            fallback_city_ref = city_matches[0]["ref"] if city_matches else ""
+            if fallback_city_ref:
+                props = {"CityRef": fallback_city_ref, "Limit": 200}
+                if query:
+                    props["FindByString"] = query
+                data = nova_poshta_request("AddressGeneral", "getWarehouses", props)
+                if not data:
+                    data = nova_poshta_request("Address", "getWarehouses", props)
+                for item in data:
+                    number = item.get("Number") or item.get("SiteKey") or ""
+                    label = item.get("Description") or item.get("ShortAddress") or number
+                    pretty = f"№{number} — {label}" if number and not str(label).startswith("№") else label
+                    results.append({"ref": item.get("Ref") or number or label, "label": pretty})
+
     elif provider == "meest":
         results = meest_public_lookup("branches", query, city_ref=city_ref)
     elif provider == "ukrposhta":
         results = []
     else:
         results = []
-    return results[:200]
+
+    # dedupe
+    seen = set()
+    unique = []
+    for item in results:
+        key = (item.get("ref"), item.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique[:200]
 
 
 def meest_public_lookup(kind, query, city_ref="", region=""):
