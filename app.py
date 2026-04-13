@@ -43,34 +43,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
-UKRAINE_REGIONS = [
-    "Вінницька",
-    "Волинська",
-    "Дніпропетровська",
-    "Донецька",
-    "Житомирська",
-    "Закарпатська",
-    "Запорізька",
-    "Івано-Франківська",
-    "Київська",
-    "Кіровоградська",
-    "Луганська",
-    "Львівська",
-    "Миколаївська",
-    "Одеська",
-    "Полтавська",
-    "Рівненська",
-    "Сумська",
-    "Тернопільська",
-    "Харківська",
-    "Херсонська",
-    "Хмельницька",
-    "Черкаська",
-    "Чернівецька",
-    "Чернігівська",
-    "м. Київ"
-]
-
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -164,6 +136,36 @@ load_dotenv(BASE_DIR / ".env")
 
 INSTANCE_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+UKRAINE_REGIONS = [
+    "Вінницька",
+    "Волинська",
+    "Дніпропетровська",
+    "Донецька",
+    "Житомирська",
+    "Закарпатська",
+    "Запорізька",
+    "Івано-Франківська",
+    "Київська",
+    "Кіровоградська",
+    "Луганська",
+    "Львівська",
+    "Миколаївська",
+    "Одеська",
+    "Полтавська",
+    "Рівненська",
+    "Сумська",
+    "Тернопільська",
+    "Харківська",
+    "Херсонська",
+    "Хмельницька",
+    "Черкаська",
+    "Чернівецька",
+    "Чернігівська",
+    "м. Київ",
+]
+
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -678,7 +680,7 @@ def create_app():
                 delivery_method=selected_delivery_method,
                 payment_method=request.form.get("payment_method", "").strip(),
                 carrier_service=request.form.get("carrier_service", "").strip(),
-                warehouse_number=(request.form.get("warehouse_number", "").strip() or request.form.get("branch_manual", "").strip()),
+                warehouse_number=request.form.get("warehouse_number", "").strip(),
                 comment=request.form.get("comment", "").strip(),
                 total_amount=final_total,
             )
@@ -1377,7 +1379,7 @@ def create_app():
         q = request.args.get("q", "").strip()
         region = request.args.get("region", "").strip()
 
-        if len(q) < 2 and not region:
+        if len(q) < 2:
             return jsonify([])
 
         lookup_provider = provider
@@ -1393,6 +1395,15 @@ def create_app():
         q = request.args.get("q", "").strip()
         city_label = request.args.get("city_label", "").strip()
         return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
+
+
+@app.get("/api/shipping/warehouses")
+def shipping_warehouses_api():
+    provider = request.args.get("provider", "np")
+    city_ref = request.args.get("city_ref", "")
+    q = request.args.get("q", "").strip()
+    city_label = request.args.get("city", "").strip() or request.args.get("city_label", "").strip()
+    return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
 
     return app
 
@@ -1654,7 +1665,7 @@ def build_owner_order_message(order):
         f"🛍 <b>Нове замовлення #{order.id}</b>\n"
         f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
         f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
-        f"📞 <b>Телефон:</b> {telegram_escape(order.phone)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
         f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
         f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
         f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
@@ -1677,7 +1688,7 @@ def build_supplier_order_message(order, supplier_items):
         f"📦 <b>Замовлення #{order.id} на ваші товари</b>\n"
         f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
         f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
-        f"📞 <b>Телефон:</b> {telegram_escape(order.phone)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
         f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
         f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
         f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
@@ -2057,7 +2068,7 @@ def infer_region(country_code):
 
 
 def validate_phone(phone, country_code="+380"):
-    digits = sanitize_phone_input(phone, country_code)
+    digits = re.sub(r"[^\d]", "", phone)
     if not digits:
         return False
     parsed = None
@@ -2072,7 +2083,7 @@ def validate_phone(phone, country_code="+380"):
 
 
 def format_phone(phone, country_code="+380"):
-    digits = sanitize_phone_input(phone, country_code)
+    digits = re.sub(r"[^\d]", "", phone)
     try:
         parsed = phonenumbers.parse(f"{country_code}{digits}", infer_region(country_code))
         return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
@@ -2176,7 +2187,7 @@ def normalize_provider_code(provider):
 
 
 def normalize_region_name(value):
-    return (
+    normalized = (
         str(value or "")
         .strip()
         .lower()
@@ -2185,23 +2196,41 @@ def normalize_region_name(value):
         .replace("обл", "")
         .replace("’", "'")
         .replace("`", "'")
+        .replace("ї", "ї")
+        .replace("й", "й")
         .strip()
     )
+    aliases = {
+        "вінницька": "винницкая",
+        "волинська": "волынская",
+        "дніпропетровська": "днепропетровская",
+        "донецька": "донецкая",
+        "житомирська": "житомирская",
+        "закарпатська": "закарпатская",
+        "запорізька": "запорожская",
+        "івано-франківська": "ивано-франковская",
+        "київська": "киевская",
+        "кіровоградська": "кировоградская",
+        "луганська": "луганская",
+        "львівська": "львовская",
+        "миколаївська": "николаевская",
+        "одеська": "одесская",
+        "полтавська": "полтавская",
+        "рівненська": "ровенская",
+        "сумська": "сумская",
+        "тернопільська": "тернопольская",
+        "харківська": "харьковская",
+        "херсонська": "херсонская",
+        "хмельницька": "хмельницкая",
+        "черкаська": "черкасская",
+        "чернівецька": "черновицкая",
+        "чернігівська": "черниговская",
+        "м. київ": "киев",
+        "київ": "киев",
+    }
+    reverse_aliases = {v: k for k, v in aliases.items()}
+    return reverse_aliases.get(normalized, normalized)
 
-def get_np_area_ref(region_name):
-    region_norm = normalize_region_name(region_name)
-    if not region_norm:
-        return ""
-    data = nova_poshta_request("Address", "getAreas", {})
-    for item in data:
-        label = item.get("Description") or item.get("Ref") or ""
-        if normalize_region_name(label) == region_norm:
-            return item.get("Ref") or ""
-    for item in data:
-        label = item.get("Description") or item.get("Ref") or ""
-        if region_norm in normalize_region_name(label):
-            return item.get("Ref") or ""
-    return ""
 
 def fetch_shipping_cities(provider, query, region=""):
     provider = normalize_provider_code(provider)
@@ -2214,41 +2243,47 @@ def fetch_shipping_cities(provider, query, region=""):
             return True
         area_norm = normalize_region_name(area_value)
         label_norm = normalize_region_name(label_value)
-        return region_norm in area_norm or region_norm in label_norm
+        return (
+            region_norm in area_norm
+            or area_norm in region_norm
+            or region_norm in label_norm
+        )
 
     if provider == "np":
-        area_ref = get_np_area_ref(region)
+        # Primary method: official NP settlement search
+        data = nova_poshta_request("Address", "searchSettlements", {
+            "CityName": query,
+            "Limit": 20,
+        })
 
-        # 1) Якщо користувач друкує місто — спочатку беремо searchSettlements.
-        if query:
-            search_payload = {"CityName": query, "Limit": 50}
-            if area_ref:
-                search_payload["AreaRef"] = area_ref
-            data = nova_poshta_request("Address", "searchSettlements", search_payload)
-            for item in data:
-                for addr in item.get("Addresses", []):
-                    area = addr.get("AreaDescription") or addr.get("Area") or addr.get("Region") or ""
-                    label = (
-                        addr.get("Present")
-                        or addr.get("MainDescription")
-                        or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
-                    )
-                    entry = {
-                        "ref": addr.get("DeliveryCity") or addr.get("Ref") or label,
-                        "label": label,
-                        "region": area,
-                    }
-                    if region_matches(area, label):
-                        results.append(entry)
+        for item in data:
+            for addr in item.get("Addresses", []):
+                area = (
+                    addr.get("AreaDescription")
+                    or addr.get("Area")
+                    or addr.get("Region")
+                    or ""
+                )
+                label = (
+                    addr.get("Present")
+                    or addr.get("MainDescription")
+                    or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
+                    or ""
+                )
+                entry = {
+                    "ref": addr.get("DeliveryCity") or addr.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                }
+                if region_matches(area, label):
+                    results.append(entry)
 
-        # 2) Якщо по search нічого не знайдено — беремо список міст по області.
+        # Fallback 1: generic city search
         if not results:
-            city_payload = {"Limit": 500}
-            if area_ref:
-                city_payload["AreaRef"] = area_ref
-            if query:
-                city_payload["FindByString"] = query
-            data = nova_poshta_request("Address", "getCities", city_payload)
+            data = nova_poshta_request("Address", "getCities", {
+                "FindByString": query,
+                "Limit": 20,
+            })
             for item in data:
                 area = item.get("AreaDescription") or item.get("RegionDescription") or ""
                 label = item.get("Description") or item.get("Present") or ""
@@ -2260,34 +2295,48 @@ def fetch_shipping_cities(provider, query, region=""):
                 if region_matches(area, label):
                     results.append(entry)
 
-        # 3) Якщо область відсікла все зайве — пробуємо ще раз без жорсткого фільтра.
-        if not results and query:
-            data = nova_poshta_request("Address", "searchSettlements", {"CityName": query, "Limit": 50})
+        # Fallback 2: ignore region if filter is too strict
+        if not results:
+            data = nova_poshta_request("Address", "getCities", {
+                "FindByString": query,
+                "Limit": 20,
+            })
             for item in data:
-                for addr in item.get("Addresses", []):
-                    area = addr.get("AreaDescription") or addr.get("Area") or addr.get("Region") or ""
-                    label = (
-                        addr.get("Present")
-                        or addr.get("MainDescription")
-                        or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
-                    )
-                    results.append({
-                        "ref": addr.get("DeliveryCity") or addr.get("Ref") or label,
-                        "label": label,
-                        "region": area,
-                    })
+                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+                label = item.get("Description") or item.get("Present") or ""
+                results.append({
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                })
 
     elif provider == "meest":
-        results = meest_public_lookup("cities", query or region, region=region_norm)
+        results = meest_public_lookup("cities", query, region=region_norm)
 
     else:
-        data = nova_poshta_request("Address", "getCities", {"FindByString": query, "Limit": 50} if query else {"Limit": 100})
+        data = nova_poshta_request("Address", "getCities", {
+            "FindByString": query,
+            "Limit": 20,
+        })
         for item in data:
             area = item.get("AreaDescription") or item.get("RegionDescription") or ""
             label = item.get("Description") or item.get("Present") or ""
-            entry = {"ref": item.get("Ref") or label, "label": label, "region": area}
+            entry = {
+                "ref": item.get("Ref") or label,
+                "label": label,
+                "region": area,
+            }
             if region_matches(area, label):
                 results.append(entry)
+        if not results:
+            for item in data:
+                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+                label = item.get("Description") or item.get("Present") or ""
+                results.append({
+                    "ref": item.get("Ref") or label,
+                    "label": label,
+                    "region": area,
+                })
 
     seen = set()
     unique = []
@@ -2297,18 +2346,31 @@ def fetch_shipping_cities(provider, query, region=""):
             continue
         seen.add(key)
         unique.append(item)
-    return unique[:200]
+    return unique[:20]
 
 
 def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
     provider = normalize_provider_code(provider)
     results = []
-    query = (query or "").strip()
-
     if provider == "np":
-        props = {"Limit": 200}
-        if city_ref:
-            props["CityRef"] = city_ref
+        resolved_city_ref = city_ref
+
+        if not resolved_city_ref and city_label:
+            lookup = nova_poshta_request("Address", "searchSettlements", {
+                "CityName": city_label,
+                "Limit": 1,
+            })
+            for item in lookup:
+                for addr in item.get("Addresses", []):
+                    resolved_city_ref = addr.get("DeliveryCity") or addr.get("Ref") or ""
+                    if resolved_city_ref:
+                        break
+                if resolved_city_ref:
+                    break
+
+        props = {"Limit": 50}
+        if resolved_city_ref:
+            props["CityRef"] = resolved_city_ref
         if query:
             props["FindByString"] = query
 
@@ -2317,45 +2379,16 @@ def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
             data = nova_poshta_request("Address", "getWarehouses", props)
 
         for item in data:
-            number = item.get("Number") or item.get("SiteKey") or ""
-            label = item.get("Description") or item.get("ShortAddress") or number
-            pretty = f"№{number} — {label}" if number and not str(label).startswith("№") else label
-            results.append({"ref": item.get("Ref") or number or label, "label": pretty})
-
-        # fallback by city label if city_ref missing or warehouses empty
-        if not results and city_label:
-            city_matches = fetch_shipping_cities("np", city_label, "")
-            fallback_city_ref = city_matches[0]["ref"] if city_matches else ""
-            if fallback_city_ref:
-                props = {"CityRef": fallback_city_ref, "Limit": 200}
-                if query:
-                    props["FindByString"] = query
-                data = nova_poshta_request("AddressGeneral", "getWarehouses", props)
-                if not data:
-                    data = nova_poshta_request("Address", "getWarehouses", props)
-                for item in data:
-                    number = item.get("Number") or item.get("SiteKey") or ""
-                    label = item.get("Description") or item.get("ShortAddress") or number
-                    pretty = f"№{number} — {label}" if number and not str(label).startswith("№") else label
-                    results.append({"ref": item.get("Ref") or number or label, "label": pretty})
-
+            label = item.get("Description") or item.get("ShortAddress") or item.get("SiteKey")
+            results.append({"ref": item.get("Ref") or item.get("SiteKey") or label, "label": label})
     elif provider == "meest":
         results = meest_public_lookup("branches", query, city_ref=city_ref)
     elif provider == "ukrposhta":
+        # MVP fallback: let the user choose a service type and type in an index/branch if no API is configured.
         results = []
     else:
         results = []
-
-    # dedupe
-    seen = set()
-    unique = []
-    for item in results:
-        key = (item.get("ref"), item.get("label"))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(item)
-    return unique[:200]
+    return results[:50]
 
 
 def meest_public_lookup(kind, query, city_ref="", region=""):
