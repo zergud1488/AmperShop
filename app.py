@@ -43,6 +43,34 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
+UKRAINE_REGIONS = [
+    "Вінницька",
+    "Волинська",
+    "Дніпропетровська",
+    "Донецька",
+    "Житомирська",
+    "Закарпатська",
+    "Запорізька",
+    "Івано-Франківська",
+    "Київська",
+    "Кіровоградська",
+    "Луганська",
+    "Львівська",
+    "Миколаївська",
+    "Одеська",
+    "Полтавська",
+    "Рівненська",
+    "Сумська",
+    "Тернопільська",
+    "Харківська",
+    "Херсонська",
+    "Хмельницька",
+    "Черкаська",
+    "Чернівецька",
+    "Чернігівська",
+    "м. Київ"
+]
+
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 INSTANCE_DIR = BASE_DIR / "instance"
