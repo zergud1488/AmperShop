@@ -1,24 +1,18 @@
-{% extends 'emails/_base.html' %}
+{% extends "emails/layout.html" %}
 {% block body %}
-<h1 style="font-size:30px;margin:0 0 12px;">Дякуємо за замовлення #{{ order.id }}</h1>
-<p class="muted">Ми отримали ваше замовлення та вже передали його в роботу. Нижче — всі деталі покупки.</p>
-<div class="meta">
-  <div><strong>Отримувач:</strong> {{ order.customer_name }} {{ order.customer_surname }}</div>
-  <div><strong>Телефон:</strong> {{ order.phone_country_code or '' }} {{ order.phone }}</div>
-  <div><strong>Email:</strong> {{ order.email or '-' }}</div>
-  <div><strong>Статус:</strong> {{ order.status }}</div>
-  <div><strong>Доставка:</strong> {{ delivery_method_label }}{% if order.carrier_service %} • {{ order.carrier_service }}{% endif %}</div>
-  <div><strong>Пункт видачі / індекс:</strong> {{ order.warehouse_number or '-' }}</div>
-  <div><strong>Оплата:</strong> {{ order.payment_method }}</div>
-  <div><strong>Сума:</strong> {{ '%.0f'|format(order.total_amount) }} грн</div>
+<h2 style="margin:0 0 16px">Дякуємо за замовлення #{{ order.id }}</h2>
+<p style="margin:0 0 8px">Ми отримали ваше замовлення та вже передали його в обробку.</p>
+<p style="margin:0 0 16px"><b>Сума:</b> {{ '%.0f'|format(order.total_amount or 0) }} грн</p>
+<div style="padding:16px;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:16px">
+  <div style="margin-bottom:8px"><b>Доставка:</b> {{ delivery_method_label }}</div>
+  <div style="margin-bottom:8px"><b>Оплата:</b> {{ order.payment_method }}</div>
+  <div><b>Статус:</b> {{ order.status or 'Нове замовлення' }}</div>
 </div>
-<div class="meta">
-  {% for item in order.items %}
-  <div class="item">
-    <strong>{{ item.title }}</strong><br>
-    <span class="muted">{{ item.quantity }} × {{ '%.0f'|format(item.price) }} грн = {{ '%.0f'|format(item.price * item.quantity) }} грн</span>
-  </div>
-  {% endfor %}
+<h3 style="margin:0 0 12px">Склад замовлення</h3>
+{% for item in order.items %}
+<div style="padding:12px 0;border-top:1px solid #eee">
+  <div><b>{{ item.title }}</b> × {{ item.quantity }}</div>
+  <div style="color:#555">{{ '%.0f'|format(item.price or 0) }} грн</div>
 </div>
-<p class="muted" style="margin-top:20px;">Статус замовлення буде оновлюватися в особистому кабінеті. Якщо потрібна допомога — просто відповідайте на цей лист.</p>
+{% endfor %}
 {% endblock %}
