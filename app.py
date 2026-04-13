@@ -6,6 +6,7 @@ import smtplib
 import sqlite3
 import uuid
 from collections import defaultdict
+from functools import lru_cache
 from decimal import Decimal
 from datetime import datetime, timedelta
 from functools import wraps
@@ -42,34 +43,6 @@ from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
-
-UKRAINE_REGIONS = [
-    "Вінницька",
-    "Волинська",
-    "Дніпропетровська",
-    "Донецька",
-    "Житомирська",
-    "Закарпатська",
-    "Запорізька",
-    "Івано-Франківська",
-    "Київська",
-    "Кіровоградська",
-    "Луганська",
-    "Львівська",
-    "Миколаївська",
-    "Одеська",
-    "Полтавська",
-    "Рівненська",
-    "Сумська",
-    "Тернопільська",
-    "Харківська",
-    "Херсонська",
-    "Хмельницька",
-    "Черкаська",
-    "Чернівецька",
-    "Чернігівська",
-    "м. Київ"
-]
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
@@ -180,7 +153,7 @@ class Setting(db.Model):
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(180), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=True)
+    password_hash = db.Column(db.String(255), nullable=False, default="")
     full_name = db.Column(db.String(180), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     google_id = db.Column(db.String(255), unique=True, nullable=True)
@@ -678,7 +651,7 @@ def create_app():
                 delivery_method=selected_delivery_method,
                 payment_method=request.form.get("payment_method", "").strip(),
                 carrier_service=request.form.get("carrier_service", "").strip(),
-                warehouse_number=request.form.get("warehouse_number", "").strip(),
+                warehouse_number=(request.form.get("warehouse_number", "").strip() or request.form.get("branch_manual", "").strip()),
                 comment=request.form.get("comment", "").strip(),
                 total_amount=final_total,
             )
@@ -916,19 +889,29 @@ def create_app():
                 return redirect(url_for("account_login"))
             user = User.query.filter((User.email == email) | (User.google_id == google_id)).first()
             if not user:
-                user = User(email=email, full_name=name or email.split("@")[0], google_id=google_id or None, is_admin=False, email_verified=True)
+                user = User(
+                    email=email,
+                    password_hash="",
+                    full_name=name or email.split("@")[0],
+                    is_admin=False,
+                    google_id=google_id or None,
+                    email_verified=True,
+                )
                 db.session.add(user)
             else:
                 if google_id and not user.google_id:
                     user.google_id = google_id
                 if not user.full_name:
                     user.full_name = name or email.split("@")[0]
+                if user.password_hash is None:
+                    user.password_hash = ""
                 user.email_verified = True
             db.session.commit()
             login_user(user)
             flash("Вхід через Google виконано", "success")
             return redirect(url_for("account_dashboard"))
         except Exception as e:
+            db.session.rollback()
             app.logger.exception("Google OAuth callback error")
             flash(f"Помилка входу через Google: {e}", "danger")
             return redirect(url_for("account_login"))
@@ -1377,7 +1360,7 @@ def create_app():
         q = request.args.get("q", "").strip()
         region = request.args.get("region", "").strip()
 
-        if len(q) < 2:
+        if len(q) < 2 and not region:
             return jsonify([])
 
         lookup_provider = provider
@@ -1402,6 +1385,11 @@ def ensure_columns():
     tables = {t: [c["name"] for c in inspector.get_columns(t)] for t in inspector.get_table_names()}
     statements = []
     if "user" in tables:
+        try:
+            db.session.execute(text("UPDATE user SET password_hash = '' WHERE password_hash IS NULL"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         for column, ddl in {
             "google_id": "VARCHAR(255)",
             "email_verified": "BOOLEAN DEFAULT 0",
@@ -1654,7 +1642,7 @@ def build_owner_order_message(order):
         f"🛍 <b>Нове замовлення #{order.id}</b>\n"
         f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
         f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
-        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape(order.phone)}\n"
         f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
         f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
         f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
@@ -1677,7 +1665,7 @@ def build_supplier_order_message(order, supplier_items):
         f"📦 <b>Замовлення #{order.id} на ваші товари</b>\n"
         f"{icon} <b>Статус:</b> {telegram_escape(status_label)}\n\n"
         f"👤 <b>Клієнт:</b> {telegram_escape(order.customer_name)} {telegram_escape(order.customer_surname)}\n"
-        f"📞 <b>Телефон:</b> {telegram_escape((order.phone_country_code or '').strip())} {telegram_escape(order.phone)}\n"
+        f"📞 <b>Телефон:</b> {telegram_escape(order.phone)}\n"
         f"✉️ <b>Email:</b> {telegram_escape(order.email or '-')}\n"
         f"📍 <b>Область:</b> {telegram_escape(order.region or '-')}\n"
         f"🏙 <b>Місто:</b> {telegram_escape(order.city or '-')}\n"
@@ -2057,7 +2045,7 @@ def infer_region(country_code):
 
 
 def validate_phone(phone, country_code="+380"):
-    digits = re.sub(r"[^\d]", "", phone)
+    digits = sanitize_phone_input(phone, country_code)
     if not digits:
         return False
     parsed = None
@@ -2072,7 +2060,7 @@ def validate_phone(phone, country_code="+380"):
 
 
 def format_phone(phone, country_code="+380"):
-    digits = re.sub(r"[^\d]", "", phone)
+    digits = sanitize_phone_input(phone, country_code)
     try:
         parsed = phonenumbers.parse(f"{country_code}{digits}", infer_region(country_code))
         return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
@@ -2188,11 +2176,77 @@ def normalize_region_name(value):
         .strip()
     )
 
+
+@lru_cache(maxsize=64)
+def get_np_cities_for_region(region_name):
+    region_norm = normalize_region_name(region_name)
+    results = []
+    area_ref = get_np_area_ref(region_name)
+
+    def append_city(item):
+        area = item.get("AreaDescription") or item.get("RegionDescription") or ""
+        label = item.get("Description") or item.get("Present") or ""
+        ref = item.get("Ref") or label
+        if not label:
+            return
+        if region_norm and region_norm not in normalize_region_name(area):
+            return
+        results.append({"ref": ref, "label": label, "region": area})
+
+    if area_ref:
+        page = 1
+        while page <= 20:
+            data = nova_poshta_request("Address", "getCities", {"AreaRef": area_ref, "Limit": 500, "Page": page})
+            if not data:
+                break
+            for item in data:
+                append_city(item)
+            if len(data) < 500:
+                break
+            page += 1
+
+    if not results:
+        page = 1
+        while page <= 20:
+            data = nova_poshta_request("Address", "getCities", {"Limit": 500, "Page": page})
+            if not data:
+                break
+            for item in data:
+                append_city(item)
+            if len(data) < 500:
+                break
+            page += 1
+
+    seen = set()
+    unique = []
+    for item in results:
+        key = (item["ref"], item["label"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return tuple((item["ref"], item["label"], item["region"]) for item in unique)
+
+def get_np_area_ref(region_name):
+    region_norm = normalize_region_name(region_name)
+    if not region_norm:
+        return ""
+    data = nova_poshta_request("Address", "getAreas", {})
+    for item in data:
+        label = item.get("Description") or item.get("Ref") or ""
+        if normalize_region_name(label) == region_norm:
+            return item.get("Ref") or ""
+    for item in data:
+        label = item.get("Description") or item.get("Ref") or ""
+        if region_norm in normalize_region_name(label):
+            return item.get("Ref") or ""
+    return ""
+
+
 def fetch_shipping_cities(provider, query, region=""):
     provider = normalize_provider_code(provider)
     query = (query or "").strip()
     region_norm = normalize_region_name(region)
-    results = []
 
     def region_matches(area_value, label_value=""):
         if not region_norm:
@@ -2201,37 +2255,37 @@ def fetch_shipping_cities(provider, query, region=""):
         label_norm = normalize_region_name(label_value)
         return region_norm in area_norm or region_norm in label_norm
 
+    results = []
+
     if provider == "np":
-        data = nova_poshta_request("Address", "searchSettlements", {
-            "CityName": query,
-            "Limit": 20,
-        })
-        for item in data:
-            for addr in item.get("Addresses", []):
-                area = (
-                    addr.get("AreaDescription")
-                    or addr.get("Area")
-                    or addr.get("Region")
-                    or ""
-                )
-                label = (
-                    addr.get("Present")
-                    or addr.get("MainDescription")
-                    or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
-                )
-                entry = {
-                    "ref": addr.get("Ref") or addr.get("DeliveryCity") or label,
-                    "label": label,
-                    "region": area,
-                }
-                if region_matches(area, label):
-                    results.append(entry)
+        # When region is selected, load a full city list for that region first.
+        if region:
+            cached = get_np_cities_for_region(region)
+            for ref, label, area in cached:
+                if not query or query.lower() in (label or "").lower():
+                    results.append({"ref": ref, "label": label, "region": area})
 
+        # If nothing found yet and user typed something, try direct NP search.
+        if not results and query:
+            data = nova_poshta_request("Address", "searchSettlements", {"CityName": query, "Limit": 20})
+            for item in data:
+                for addr in item.get("Addresses", []):
+                    area = addr.get("AreaDescription") or addr.get("Area") or addr.get("Region") or ""
+                    label = addr.get("Present") or addr.get("MainDescription") or ((addr.get("SettlementTypeDescription", "") + " " + addr.get("CityDescription", "")).strip())
+                    entry = {
+                        "ref": addr.get("Ref") or addr.get("DeliveryCity") or label,
+                        "label": label,
+                        "region": area,
+                    }
+                    if region_matches(area, label):
+                        results.append(entry)
+
+        # Final fallback: getCities by search string without hard region dependence.
         if not results:
-            data = nova_poshta_request("Address", "getCities", {
-                "FindByString": query,
-                "Limit": 20,
-            })
+            props = {"Limit": 100}
+            if query:
+                props["FindByString"] = query
+            data = nova_poshta_request("Address", "getCities", props)
             for item in data:
                 area = item.get("AreaDescription") or item.get("RegionDescription") or ""
                 label = item.get("Description") or item.get("Present") or ""
@@ -2242,49 +2296,18 @@ def fetch_shipping_cities(provider, query, region=""):
                 }
                 if region_matches(area, label):
                     results.append(entry)
-
-        # fallback without region filter if region was too strict
-        if not results and region_norm:
-            data = nova_poshta_request("Address", "getCities", {
-                "FindByString": query,
-                "Limit": 20,
-            })
-            for item in data:
-                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
-                label = item.get("Description") or item.get("Present") or ""
-                results.append({
-                    "ref": item.get("Ref") or label,
-                    "label": label,
-                    "region": area,
-                })
 
     elif provider == "meest":
         results = meest_public_lookup("cities", query, region=region_norm)
-
     else:
-        data = nova_poshta_request("Address", "getCities", {
-            "FindByString": query,
-            "Limit": 20,
-        })
+        # Fallback for services without direct city API in this build.
+        data = nova_poshta_request("Address", "getCities", {"FindByString": query, "Limit": 50} if query else {"Limit": 50})
         for item in data:
             area = item.get("AreaDescription") or item.get("RegionDescription") or ""
             label = item.get("Description") or item.get("Present") or ""
-            entry = {
-                "ref": item.get("Ref") or label,
-                "label": label,
-                "region": area,
-            }
+            entry = {"ref": item.get("Ref") or label, "label": label, "region": area}
             if region_matches(area, label):
                 results.append(entry)
-        if not results and region_norm:
-            for item in data:
-                area = item.get("AreaDescription") or item.get("RegionDescription") or ""
-                label = item.get("Description") or item.get("Present") or ""
-                results.append({
-                    "ref": item.get("Ref") or label,
-                    "label": label,
-                    "region": area,
-                })
 
     seen = set()
     unique = []
@@ -2294,14 +2317,15 @@ def fetch_shipping_cities(provider, query, region=""):
             continue
         seen.add(key)
         unique.append(item)
-    return unique[:20]
+    return unique[:200]
 
 
 def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
     provider = normalize_provider_code(provider)
     results = []
+    query = (query or "").strip()
     if provider == "np":
-        props = {"Limit": 50}
+        props = {"Limit": 200}
         if city_ref:
             props["CityRef"] = city_ref
         if query:
@@ -2310,16 +2334,17 @@ def fetch_shipping_branches(provider, city_ref, query="", city_label=""):
         if not data:
             data = nova_poshta_request("Address", "getWarehouses", props)
         for item in data:
-            label = item.get("Description") or item.get("ShortAddress") or item.get("SiteKey")
-            results.append({"ref": item.get("Ref") or item.get("SiteKey") or label, "label": label})
+            number = item.get("Number") or item.get("SiteKey") or ""
+            label = item.get("Description") or item.get("ShortAddress") or number
+            pretty = f"№{number} — {label}" if number and not str(label).startswith("№") else label
+            results.append({"ref": item.get("Ref") or number or label, "label": pretty})
     elif provider == "meest":
         results = meest_public_lookup("branches", query, city_ref=city_ref)
     elif provider == "ukrposhta":
-        # MVP fallback: let the user choose a service type and type in an index/branch if no API is configured.
         results = []
     else:
         results = []
-    return results[:50]
+    return results[:200]
 
 
 def meest_public_lookup(kind, query, city_ref="", region=""):

@@ -8,7 +8,7 @@
         <div class="section-head mb-4">
           <div class="eyebrow">Оформлення</div>
           <h1 class="fw-bold">Дані для доставки</h1>
-          <p class="text-secondary mb-0">Оберіть службу доставки та зручне місто, область і відділення зі списку. Це пришвидшує обробку замовлення і зменшує помилки в адресі.</p>
+          <p class="text-secondary mb-0">Оберіть службу доставки та послідовно виберіть область, місто і відділення. Для Нової Пошти це працює зі списків, без ручних помилок у назвах.</p>
         </div>
         <form method="post" class="card border-0 shadow-sm rounded-4 needs-validation" novalidate id="checkoutForm">
           <div class="card-body p-4">
@@ -23,7 +23,7 @@
                 </select>
               </div>
               <div class="col-md-8">
-                <input required class="form-control" id="phoneInput" name="phone" placeholder="Номер телефону" pattern="[0-9\s\-\(\)]{6,}">
+                <input required class="form-control" id="phoneInput" name="phone" placeholder="Номер телефону без дублювання коду країни" pattern="[0-9\s\-\(\)\+]{6,}">
                 <div class="small mt-1" id="phoneValidationHint"></div>
               </div>
               <div class="col-md-6">
@@ -43,7 +43,7 @@
                 </div>
               </div>
 
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label class="form-label">Область</label>
                 <select name="region" id="regionSelect" class="form-select">
                   <option value="">Оберіть область</option>
@@ -52,32 +52,33 @@
                   {% endfor %}
                 </select>
               </div>
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label class="form-label">Місто</label>
                 <select name="city" id="citySelect" class="form-select" disabled>
-                  <option value="">Спочатку введіть 2+ літери міста</option>
+                  <option value="">Спочатку оберіть область</option>
                 </select>
                 <input type="hidden" name="city_ref" id="cityRef">
-                <input class="form-control mt-2" id="citySearch" placeholder="Почніть вводити місто">
-                <div class="form-text">Почни вводити назву міста українською. Якщо з вибраною областю нічого не знайдено, система покаже результати без жорсткого фільтра.</div>
+                <input class="form-control mt-2" id="citySearch" placeholder="Фільтр міст у вибраній області">
+                <div class="form-text">Для Нової Пошти після вибору області завантажується список міст. Можна також почати вводити назву міста для швидкого пошуку.</div>
               </div>
 
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label class="form-label">Тип доставки</label>
                 <select name="carrier_service" id="carrierService" class="form-select">
-                  <option value="">Тип доставки</option>
-                  <option value="Відділення">Відділення</option>
+                  <option value="Відділення" selected>Відділення</option>
                   <option value="Поштомат">Поштомат</option>
                   <option value="Кур'єрська доставка">Кур'єрська доставка</option>
                 </select>
               </div>
+
               <div class="col-md-6">
                 <label class="form-label">Відділення / індекс</label>
                 <select name="warehouse_number" id="branchSelect" class="form-select" disabled>
-                  <option value="">Оберіть місто</option>
+                  <option value="">Спочатку оберіть місто</option>
                 </select>
                 <input class="form-control mt-2" id="branchSearch" placeholder="Пошук відділення або індексу">
-                <div class="form-text" id="branchHint">Для Нової Пошти та Meest відділення підтягуються автоматично. Для інших служб можна ввести відділення вручну.</div>
+                <input type="hidden" name="branch_manual" id="branchManual">
+                <div class="form-text" id="branchHint">Для Нової Пошти відділення підтягуються автоматично після вибору міста. Для інших служб можна ввести дані вручну в поле пошуку.</div>
               </div>
 
               <div class="col-md-6"><input class="form-control" name="address" placeholder="Адреса / вулиця / будинок"></div>
@@ -102,9 +103,7 @@
             <div class="d-flex justify-content-between gap-3 py-2 border-bottom">
               <div>
                 <div>{{ item.product.title }} × {{ item.quantity }}</div>
-                <div class="small text-secondary">
-                  Ціна: {{ '%.0f'|format(item.subtotal) }} грн
-                </div>
+                <div class="small text-secondary">Ціна: {{ '%.0f'|format(item.subtotal) }} грн</div>
               </div>
               <strong>{{ '%.0f'|format(item.subtotal) }} грн</strong>
             </div>
@@ -112,8 +111,7 @@
             <div class="d-flex justify-content-between mt-3"><span>Сума</span><strong>{{ '%.0f'|format(total) }} грн</strong></div>
             <div class="d-flex justify-content-between mt-2"><span>Знижка</span><strong>-{{ '%.0f'|format(discount) }} грн</strong></div>
             <div class="d-flex justify-content-between mt-4 fs-5 fw-bold border-top pt-3">
-              <span>Разом</span>
-              <span>{{ '%.0f'|format(final_total) }} грн</span>
+              <span>Разом</span><span>{{ '%.0f'|format(final_total) }} грн</span>
             </div>
             {% if promo %}<div class="small text-secondary mt-2">Промокод: {{ promo.code }}</div>{% endif %}
           </div>
@@ -125,19 +123,31 @@
 
 <script>
 (() => {
+  const form = document.getElementById('checkoutForm');
   const providerRadios = document.querySelectorAll('input[name="delivery_method"]');
   const regionSelect = document.getElementById('regionSelect');
-  const citySearch = document.getElementById('citySearch');
   const citySelect = document.getElementById('citySelect');
   const cityRef = document.getElementById('cityRef');
-  const branchSearch = document.getElementById('branchSearch');
+  const citySearch = document.getElementById('citySearch');
   const branchSelect = document.getElementById('branchSelect');
+  const branchSearch = document.getElementById('branchSearch');
+  const branchManual = document.getElementById('branchManual');
   const branchHint = document.getElementById('branchHint');
 
-  const getProvider = () => document.querySelector('input[name="delivery_method"]:checked')?.value || 'nova_poshta';
-  const supportsApiBranches = () => ['nova_poshta', 'np', 'novaposhta', 'meest'].includes(getProvider());
+  let loadedCities = [];
+  let loadedBranches = [];
 
-  function setOptions(select, items, placeholder) {
+  const getProvider = () => document.querySelector('input[name="delivery_method"]:checked')?.value || 'nova_poshta';
+  const providerCode = () => {
+    const value = getProvider();
+    if (['nova_poshta', 'novaposhta', 'np'].includes(value)) return 'np';
+    if (['meest'].includes(value)) return 'meest';
+    if (['ukrposhta', 'ukr_post'].includes(value)) return 'ukrposhta';
+    return value;
+  };
+  const supportsApiBranches = () => ['np', 'meest'].includes(providerCode());
+
+  function setOptions(select, items, placeholder, includeRegion=false) {
     select.innerHTML = '';
     const first = document.createElement('option');
     first.value = '';
@@ -146,7 +156,7 @@
     items.forEach(item => {
       const opt = document.createElement('option');
       opt.value = item.label || item.value || '';
-      opt.textContent = item.region ? `${item.label} — ${item.region}` : (item.label || item.value || '');
+      opt.textContent = includeRegion && item.region ? `${item.label} — ${item.region}` : (item.label || item.value || '');
       if (item.ref) opt.dataset.ref = item.ref;
       if (item.region) opt.dataset.region = item.region;
       select.appendChild(opt);
@@ -155,87 +165,105 @@
   }
 
   async function fetchJson(url) {
-    const r = await fetch(url, {headers: {'X-Requested-With':'XMLHttpRequest'}});
+    const r = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
     return r.ok ? r.json() : [];
   }
 
-  async function searchCities() {
-    const q = citySearch.value.trim();
-    if (q.length < 2) {
-      setOptions(citySelect, [], 'Спочатку введіть 2+ літери міста');
-      cityRef.value = '';
-      return;
-    }
-    const region = encodeURIComponent(regionSelect.value || '');
+  async function loadCities() {
+    const region = regionSelect.value || '';
+    cityRef.value = '';
+    loadedCities = [];
+    setOptions(citySelect, [], region ? 'Завантаження міст...' : 'Спочатку оберіть область');
+    setOptions(branchSelect, [], 'Спочатку оберіть місто');
+
+    if (!region) return;
     const provider = encodeURIComponent(getProvider());
-    const items = await fetchJson(`/api/shipping/cities?provider=${provider}&q=${encodeURIComponent(q)}&region=${region}`);
-    setOptions(citySelect, items, items.length ? 'Оберіть місто' : 'Нічого не знайдено');
+    const items = await fetchJson(`/api/shipping/cities?provider=${provider}&region=${encodeURIComponent(region)}`);
+    loadedCities = Array.isArray(items) ? items : [];
+    renderFilteredCities();
   }
 
-  async function searchBranches() {
-    const cityOption = citySelect.options[citySelect.selectedIndex];
-    const cityLabel = cityOption?.value || '';
-    const ref = cityOption?.dataset.ref || cityRef.value || '';
-    const q = branchSearch.value.trim();
-    const provider = encodeURIComponent(getProvider());
+  async function renderFilteredCities() {
+    const q = (citySearch.value || '').trim().toLowerCase();
+    let filtered = !q ? loadedCities : loadedCities.filter(item =>
+      (item.label || '').toLowerCase().includes(q) || (item.region || '').toLowerCase().includes(q)
+    );
+
+    if (!filtered.length && q.length >= 2 && regionSelect.value) {
+      const provider = encodeURIComponent(getProvider());
+      const remote = await fetchJson(`/api/shipping/cities?provider=${provider}&region=${encodeURIComponent(regionSelect.value)}&q=${encodeURIComponent(citySearch.value.trim())}`);
+      filtered = Array.isArray(remote) ? remote : [];
+      if (filtered.length) {
+        loadedCities = filtered;
+      }
+    }
+
+    setOptions(citySelect, filtered, filtered.length ? 'Оберіть місто' : 'Міста не знайдено', true);
+  }
+
+  async function loadBranches() {
+    const selected = citySelect.options[citySelect.selectedIndex];
+    const ref = selected?.dataset.ref || '';
+    const cityLabel = selected?.value || '';
+    cityRef.value = ref;
+    loadedBranches = [];
+    branchManual.value = '';
+    setOptions(branchSelect, [], ref || cityLabel ? 'Завантаження відділень...' : 'Спочатку оберіть місто');
 
     if (!supportsApiBranches()) {
-      branchSelect.disabled = false;
-      branchHint.textContent = 'Для цієї служби введіть номер відділення, поштомату або індекс у поле нижче.';
+      branchSelect.disabled = true;
+      branchHint.textContent = 'Для цієї служби введіть відділення, індекс або адресу в поле нижче.';
+      branchManual.value = branchSearch.value.trim();
       return;
     }
-    if (!cityLabel && !ref) {
-      setOptions(branchSelect, [], 'Спочатку оберіть місто');
-      return;
-    }
-    const items = await fetchJson(`/api/shipping/branches?provider=${provider}&city_ref=${encodeURIComponent(ref)}&city_label=${encodeURIComponent(cityLabel)}&q=${encodeURIComponent(q)}`);
-    setOptions(branchSelect, items, items.length ? 'Оберіть відділення' : 'Нічого не знайдено');
-    branchHint.textContent = 'Можна шукати номер відділення, адресу або індекс.';
+    if (!ref && !cityLabel) return;
+
+    const provider = encodeURIComponent(getProvider());
+    const items = await fetchJson(`/api/shipping/branches?provider=${provider}&city_ref=${encodeURIComponent(ref)}&city_label=${encodeURIComponent(cityLabel)}`);
+    loadedBranches = Array.isArray(items) ? items : [];
+    renderFilteredBranches();
   }
 
-  citySelect.addEventListener('change', () => {
-    const selected = citySelect.options[citySelect.selectedIndex];
-    cityRef.value = selected?.dataset.ref || '';
-    if (selected?.dataset.region && !regionSelect.value) regionSelect.value = selected.dataset.region;
-    searchBranches();
-  });
+  function renderFilteredBranches() {
+    if (!supportsApiBranches()) {
+      branchManual.value = branchSearch.value.trim();
+      return;
+    }
+    const q = (branchSearch.value || '').trim().toLowerCase();
+    const filtered = !q ? loadedBranches : loadedBranches.filter(item =>
+      (item.label || '').toLowerCase().includes(q)
+    );
+    setOptions(branchSelect, filtered, filtered.length ? 'Оберіть відділення' : 'Відділення не знайдено');
+    branchHint.textContent = 'Оберіть готове відділення зі списку або звузьте пошук номером.';
+  }
 
-  regionSelect.addEventListener('change', () => {
-    cityRef.value = '';
-    setOptions(branchSelect, [], 'Оберіть місто');
-    if (citySearch.value.trim().length >= 2) searchCities();
-  });
-
-  let cityTimer;
-  citySearch.addEventListener('input', () => {
-    clearTimeout(cityTimer);
-    cityTimer = setTimeout(searchCities, 350);
-  });
-
-  let branchTimer;
-  branchSearch.addEventListener('input', () => {
-    clearTimeout(branchTimer);
-    branchTimer = setTimeout(searchBranches, 300);
-  });
-
-  providerRadios.forEach(r => r.addEventListener('change', () => {
-    cityRef.value = '';
-    setOptions(citySelect, [], 'Почніть вводити місто');
-    setOptions(branchSelect, [], 'Оберіть місто');
+  providerRadios.forEach(r => r.addEventListener('change', async () => {
+    branchSearch.value = '';
+    citySearch.value = '';
+    loadedCities = [];
+    loadedBranches = [];
+    if (regionSelect.value) {
+      await loadCities();
+    } else {
+      setOptions(citySelect, [], 'Спочатку оберіть область');
+      setOptions(branchSelect, [], 'Спочатку оберіть місто');
+    }
     branchHint.textContent = supportsApiBranches()
       ? 'Для Нової Пошти та Meest відділення підтягуються автоматично.'
-      : 'Для цієї служби можна ввести відділення або індекс вручну.';
-    if (citySearch.value.trim().length >= 2) searchCities();
+      : 'Для цієї служби введіть відділення, індекс або адресу в поле нижче.';
   }));
 
-  document.getElementById('checkoutForm').addEventListener('submit', () => {
-    if (branchSelect.value) {
-      const hidden = document.createElement('input');
-      hidden.type = 'hidden';
-      hidden.name = 'warehouse_number';
-      hidden.value = branchSelect.value;
-      document.getElementById('checkoutForm').appendChild(hidden);
+  regionSelect.addEventListener('change', loadCities);
+  citySelect.addEventListener('change', loadBranches);
+  citySearch.addEventListener('input', () => { renderFilteredCities(); });
+  branchSearch.addEventListener('input', renderFilteredBranches);
+
+  form.addEventListener('submit', () => {
+    if (!supportsApiBranches()) {
+      branchManual.value = branchSearch.value.trim();
       branchSelect.removeAttribute('name');
+    } else if (branchSelect.value) {
+      branchManual.value = '';
     }
   });
 })();
