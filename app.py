@@ -1396,14 +1396,13 @@ def create_app():
         city_label = request.args.get("city_label", "").strip()
         return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
 
-
-@app.get("/api/shipping/warehouses")
-def shipping_warehouses_api():
-    provider = request.args.get("provider", "np")
-    city_ref = request.args.get("city_ref", "")
-    q = request.args.get("q", "").strip()
-    city_label = request.args.get("city", "").strip() or request.args.get("city_label", "").strip()
-    return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
+    @app.get("/api/shipping/warehouses")
+    def shipping_warehouses_api():
+        provider = request.args.get("provider", "np")
+        city_ref = request.args.get("city_ref", "")
+        q = request.args.get("q", "").strip()
+        city_label = request.args.get("city", "").strip() or request.args.get("city_label", "").strip()
+        return jsonify(fetch_shipping_branches(provider, city_ref, q, city_label=city_label))
 
     return app
 
